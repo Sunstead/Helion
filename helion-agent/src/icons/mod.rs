@@ -224,7 +224,7 @@ impl Inner {
 async fn refresh_index(handle: IconsHandle) {
     let inner = &handle.0;
     if let Ok(bytes) = tokio::fs::read(inner.index_path()).await {
-        if let Ok(index) = serde_json::from_slice::<Index>(&bytes) {
+        if let Ok(index) = serde_json::from_slice::<Index>(&bytes).map(Index::finish) {
             tracing::debug!(icons = index.icons.len(), "icon index loaded from disk");
             if let Ok(mut slot) = inner.index.write() {
                 *slot = Arc::new(index);
@@ -393,6 +393,10 @@ mod tests {
             ("vaultwarden/server:latest", "vaultwarden", "vaultwarden"),
             ("portainer/portainer-ce:2", "portainer", "portainer"),
             ("louislam/uptime-kuma:1", "kuma", "uptime-kuma"),
+            ("ghcr.io/x/opencloud", "opencloud", "open-cloud"),
+            ("ghcr.io/goauthentik/server:2026.5", "authentik", "authentik"),
+            ("tailscale/tailscale", "tailscale", "tailscale"),
+            ("containrrr/watchtower", "watchtower", "watchtower"),
         ] {
             let found = settle(&poke, &handle, &subject(image, name)).await;
             assert_eq!(found.as_deref(), Some(want), "{image}");

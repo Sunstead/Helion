@@ -65,8 +65,10 @@ pub fn find(index: &Index, subject: &Subject) -> Match {
         if label == "none" {
             return Match::OptedOut;
         }
-        if !is_reserved(&label) && index.contains(&label) {
-            return Match::Icon(label);
+        if !is_reserved(&label) {
+            if let Some(found) = index.lookup(&label) {
+                return Match::Icon(found.to_string());
+            }
         }
     }
 
@@ -83,8 +85,8 @@ pub fn find(index: &Index, subject: &Subject) -> Match {
             if is_reserved(&form) {
                 return Match::Nothing;
             }
-            if index.contains(&form) {
-                return Match::Icon(form);
+            if let Some(found) = index.lookup(&form) {
+                return Match::Icon(found.to_string());
             }
         }
     }
@@ -100,7 +102,7 @@ mod tests {
         for n in names {
             i.icons.insert((*n).into(), Default::default());
         }
-        i
+        i.finish()
     }
 
     fn resolve(index: &Index, image: &str, name: &str) -> Match {
@@ -135,6 +137,14 @@ mod tests {
         ] {
             assert_eq!(resolve(&i, image, name), Match::Icon(want.into()), "{image}");
         }
+    }
+
+    #[test]
+    fn separators_do_not_matter() {
+        let i = index(&["open-cloud", "home-assistant"]);
+        assert_eq!(resolve(&i, "opencloudeu/opencloud-rolling:latest", "oc"), Match::Nothing, "a longer name isn't a guess");
+        assert_eq!(resolve(&i, "ghcr.io/x/opencloud", "oc"), Match::Icon("open-cloud".into()));
+        assert_eq!(resolve(&i, "homeassistant/home-assistant", "ha"), Match::Icon("home-assistant".into()));
     }
 
     #[test]
