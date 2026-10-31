@@ -55,6 +55,7 @@ pub struct Config {
     pub events: EventsConfig,
     pub uptime: UptimeConfig,
     pub updates: UpdatesConfig,
+    pub icons: IconsConfig,
     /// Other agents this one exchanges heartbeats with, each reporting the
     /// other when it stops answering (`[[peers]]`).
     pub peers: Vec<PeerConfig>,
@@ -117,6 +118,31 @@ pub struct UpdatesConfig {
     /// write on `repo`, nothing else.
     #[serde(skip)]
     pub token: Option<crate::updates::github::Secret>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct IconsConfig {
+    /// Finds an icon for each service from homarr-labs/dashboard-icons and
+    /// keeps the files here. The only outbound requests are for the index and
+    /// for icons that match something running.
+    pub enabled: bool,
+    /// Where `metadata.json` and `svg/<name>.svg` are fetched from. Point it
+    /// at a mirror on a network without internet, or at a pinned ref
+    /// (`.../dashboard-icons@<commit>`).
+    pub source: String,
+    /// How old the index may get before it is fetched again.
+    pub refresh_days: u32,
+}
+
+impl Default for IconsConfig {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            source: "https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons".into(),
+            refresh_days: 7,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Deserialize)]

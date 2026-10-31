@@ -9,6 +9,7 @@ use crate::{
     backups::BackupSnapshot,
     config::Config,
     docker::DockerHandle,
+    icons::IconsHandle,
     events::EventsHandle,
     notify::NotifyHandle,
     peers::PeersHandle,
@@ -51,6 +52,7 @@ pub struct Inner {
     pub uptime: Option<UptimeHandle>,
     pub updates: Option<UpdatesHandle>,
     pub peers: Option<PeersHandle>,
+    pub icons: Option<IconsHandle>,
     /// Ends streams and log sockets when the agent stops.
     pub shutdown: Shutdown,
 }

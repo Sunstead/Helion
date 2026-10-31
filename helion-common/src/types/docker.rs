@@ -74,6 +74,11 @@ pub struct ContainerInfo {
     pub helion_service: Option<String>,
     pub helion_service_description: Option<String>,
     pub helion_service_url: Option<String>,
+    /// The name of this container's icon, fetchable from `/v1/icons/<name>`.
+    /// Set only once the agent holds the file. Absent from agents before 0.15.
+    #[serde(default)]
+    #[ts(optional = nullable)]
+    pub icon: Option<String>,
     /// The `helion.update*` labels, for the agent's update rules only.
     #[serde(skip)]
     #[ts(skip)]
