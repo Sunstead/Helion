@@ -129,6 +129,7 @@ mod tests {
             helion_service: Some("immich".into()),
             helion_service_description: None,
             helion_service_url: None,
+            icon: None,
             cpu_pct: 0.0,
             mem_used_bytes: 0,
             mem_limit_bytes: 0,

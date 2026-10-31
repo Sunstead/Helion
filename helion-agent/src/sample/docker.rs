@@ -6,6 +6,7 @@
 //!   inspect calls.
 
 use super::host::unix_now;
+use crate::icons::{ matcher::Subject, IconsHandle };
 use bollard::{
     container::{ ListContainersOptions, MemoryStatsStats, Stats, StatsOptions },
     secret::{ ContainerSummary, MountPointTypeEnum, PortTypeEnum, VolumeScopeEnum },
@@ -120,6 +121,7 @@ pub struct DockerProbe {
     prev_cpu: HashMap<String, CpuSample>,
     started: HashMap<String, StartedEntry>,
     concurrency: usize,
+    icons: Option<IconsHandle>,
 }
 
 impl DockerProbe {
@@ -128,7 +130,13 @@ impl DockerProbe {
             prev_cpu: HashMap::new(),
             started: HashMap::new(),
             concurrency: concurrency.max(1),
+            icons: None,
         }
+    }
+
+    pub fn with_icons(mut self, icons: Option<IconsHandle>) -> Self {
+        self.icons = icons;
+        self
     }
 
     pub async fn sample(
@@ -209,10 +217,26 @@ impl DockerProbe {
         let (started_at, restart_count) = self.started_at(docker, &id, &state).await;
 
         let status = c.status.unwrap_or_default();
+        let image = c.image.unwrap_or_default();
+        let icon = self.icons.as_ref().and_then(|icons| {
+            let (label, service) = (
+                crate::labels::label(&labels, "icon"),
+                crate::labels::label(&labels, "service"),
+            );
+            icons.resolve(
+                &(Subject {
+                    label: label.as_deref(),
+                    service: service.as_deref(),
+                    image: &image,
+                    compose_service: labels.get("com.docker.compose.service").map(String::as_str),
+                    name: &name,
+                })
+            )
+        });
         Some(ContainerInfo {
             id,
             name,
-            image: c.image.unwrap_or_default(),
+            image,
             health: ContainerHealth::from_status(&status),
             status,
             state,
@@ -242,6 +266,7 @@ impl DockerProbe {
             helion_service: crate::labels::label(&labels, "service"),
             helion_service_description: crate::labels::label(&labels, "service.description"),
             helion_service_url: crate::labels::label(&labels, "service.url"),
+            icon,
             cpu_pct,
             mem_used_bytes,
             mem_limit_bytes,
@@ -405,6 +430,7 @@ mod tests {
                 helion_service: None,
                 helion_service_description: None,
                 helion_service_url: None,
+                icon: None,
                 cpu_pct: 0.0,
                 mem_used_bytes: 0,
                 mem_limit_bytes: 0,
