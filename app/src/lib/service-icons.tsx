@@ -1,47 +1,79 @@
-import { ComponentType, SVGProps } from 'react';
+import { ComponentType, SVGProps, useContext } from 'react';
 import { Server } from 'lucide-react';
+import { isProduct } from '@sunstead/ui/products';
+import { ProductIcon } from '@sunstead/ui/product-icon';
+import { ThemeContext } from '@sunstead/ui/use-theme';
 
-import HelionIcon from '@/assets/icon-mark.svg?react';
-import GiteaIcon from '@/assets/icons/gitea.svg?react';
-import NextcloudIcon from '@/assets/icons/nextcloud.svg?react';
-import ImmichIcon from '@/assets/icons/immich.svg?react';
-import UptimeKumaIcon from '@/assets/icons/uptime-kuma.svg?react';
-import PortainerIcon from '@/assets/icons/portainer-dark.svg?react';
-import TailscaleIcon from '@/assets/icons/tailscale-light.svg?react';
-import WatchtowerIcon from '@/assets/icons/watchtower.svg?react';
-import AuthentikIcon from '@/assets/icons/authentik.svg?react';
-import OpencloudIcon from '@/assets/icons/opencloud.svg?react';
+import { useAgentIcon } from '@/lib/agent-icon';
+import type { IconRef } from '@/lib/services';
 
 type SvgComponent = ComponentType<SVGProps<SVGSVGElement>>;
 
-const ICONS: Record<string, SvgComponent> = {
-  'helion-agent': HelionIcon,
-  helion: HelionIcon,
-  // Before the rename: containers and labels in deployments that haven't moved.
-  'cosmos-agent': HelionIcon,
-  cosmos: HelionIcon,
-  gitea: GiteaIcon,
-  nextcloud: NextcloudIcon,
-  immich: ImmichIcon,
-  'uptime-kuma': UptimeKumaIcon,
-  portainer: PortainerIcon,
-  tailscale: TailscaleIcon,
-  watchtower: WatchtowerIcon,
-  authentik: AuthentikIcon,
-  opencloud: OpencloudIcon,
+/**
+ * Icons that ship with the app, by file name: what shows before an agent has
+ * sent its own, on a node that can't reach the icon source, or offline. The
+ * agents find icons for everything by themselves, so nothing needs adding
+ * here; `local/` is for a service an agent gets wrong.
+ */
+const BUNDLED = import.meta.glob<{ default: SvgComponent }>('@/assets/icons/**/*.svg', {
+  query: '?react',
+  eager: true,
+});
+
+const bundled = new Map<string, SvgComponent>(
+  Object.entries(BUNDLED).map(([file, mod]) => [
+    // `.../icons/gitea.svg` and `.../icons/local/gitea.svg` are both `gitea`.
+    file.replace(/^.*\/icons\//, '').replace(/^local\//, '').replace(/\.svg$/, ''),
+    mod.default,
+  ]),
+);
+
+/** Names a service goes by that are another's. Before the rename Helion was Cosmos. */
+const ALIASES: Record<string, string> = {
+  'helion-agent': 'helion',
+  cosmos: 'helion',
+  'cosmos-agent': 'helion',
 };
+
+function bundledIcon(key: string, size: number, props: SVGProps<SVGSVGElement>) {
+  const Icon = bundled.get(key);
+  return Icon ? <Icon width={size} height={size} {...props} /> : null;
+}
 
 interface ServiceIconProps extends SVGProps<SVGSVGElement> {
   service: string;
+  /** The agent's icon for this service, when it has found one. */
+  icon?: IconRef | null;
   size?: number;
 }
 
-export function ServiceIcon({ service, size = 24, ...props }: ServiceIconProps) {
-  const Icon = ICONS[service.toLowerCase()];
+/**
+ * A service's icon: a Sunstead product's own, else the agent's (found from its
+ * image and labels), else one bundled with the app, else a generic server.
+ */
+export function ServiceIcon({ service, icon = null, size = 24, ...props }: ServiceIconProps) {
+  // Without a provider (a test, a bare story) there's no scheme to follow.
+  const scheme = useContext(ThemeContext)?.resolved.scheme ?? 'dark';
+  const key = service.toLowerCase();
+  const product = ALIASES[key] ?? key;
+  const fromAgent = useAgentIcon(isProduct(product) ? null : icon, scheme);
 
-  if (!Icon) {
-    return <Server size={size} />;
+  if (isProduct(product)) {
+    return <ProductIcon product={product} size={size} {...props} />;
+  }
+  if (fromAgent) {
+    return (
+      <img
+        src={fromAgent}
+        width={size}
+        height={size}
+        alt=''
+        draggable={false}
+        className={props.className}
+        style={props.style}
+      />
+    );
   }
 
-  return <Icon width={size} height={size} {...props} />;
+  return bundledIcon(key, size, props) ?? <Server size={size} />;
 }

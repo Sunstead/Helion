@@ -11,9 +11,14 @@ export type ContainerSummary = {
 
 export type ServiceStatus = 'running' | 'partial' | 'stopped';
 
+/** An icon an agent holds: which node to ask, and its name. */
+export type IconRef = { nodeId: string; name: string };
+
 export type ServiceInfo = {
   key: string;
   nodeId: string;
+  /** The agent's icon for this service (`ContainerInfo.icon`), if it found one. */
+  icon: string | null;
   name: string;
   description: string | null;
   url: string | null;
@@ -43,6 +48,35 @@ function formatServiceName(key: string): string {
   return key
     .replace(/[-_]/g, ' ')
     .replace(/(^|\s)\S/g, (char) => char.toUpperCase());
+}
+
+/**
+ * The icon most of a service's containers share, the first among equals. The
+ * agent matches the service key before the image, so an app and its database
+ * agree; a service it can't name falls to whichever container matched most.
+ */
+function commonIcon(group: ContainerInfo[]): string | null {
+  const counts = new Map<string, number>();
+  for (const c of group) {
+    if (c.icon) counts.set(c.icon, (counts.get(c.icon) ?? 0) + 1);
+  }
+  let best: string | null = null;
+  let most = 0;
+  for (const [icon, n] of counts) {
+    if (n > most) {
+      best = icon;
+      most = n;
+    }
+  }
+  return best;
+}
+
+/** The icon to ask for, from the first node that has one. */
+export function iconRef(instances: ServiceInfo[]): IconRef | null {
+  for (const s of instances) {
+    if (s.icon) return { nodeId: s.nodeId, name: s.icon };
+  }
+  return null;
 }
 
 /**
@@ -89,6 +123,7 @@ export function deriveNodeServices(
     services.push({
       key,
       nodeId,
+      icon: commonIcon(group),
       name: formatServiceName(key),
       description:
         group.map((c) => c.helion_service_description).find((d) => d != null) ?? null,
@@ -127,6 +162,8 @@ export type ServiceGroup = {
   urls: string[];
   /** In node order, as the store holds them. */
   instances: ServiceInfo[];
+  /** The first instance's agent icon, with the node that has it. */
+  icon: IconRef | null;
   /** Running only when every instance is; stopped only when every one is. */
   status: ServiceStatus;
   running: number;
@@ -158,6 +195,7 @@ export function groupServices(services: ServiceInfo[]): ServiceGroup[] {
       url: urls[0] ?? null,
       urls,
       instances,
+      icon: iconRef(instances),
       status: groupStatus(instances),
       running: instances.reduce((sum, s) => sum + s.running, 0),
       total: instances.reduce((sum, s) => sum + s.total, 0),

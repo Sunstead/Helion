@@ -406,6 +406,8 @@ phone updates through its store): in a browser the same indicator appears
 when the agent serving the page (`servedUpdate`: the node on this origin)
 reports a newer version than `__APP_VERSION__`, and offers a reload.
 
+**Service icons** (`lib/service-icons.tsx`, `lib/agent-icon.ts`). `ServiceIcon` takes the service key and, for a service, the agent's icon (`ServiceInfo.icon`, the container icons' most common; `ServiceGroup.icon` adds the node that has it). Order: a Sunstead product (`isProduct` from `@sunstead/ui/products`, drawn by `ProductIcon`; `cosmos`, `cosmos-agent` and `helion-agent` are Helion), then the agent's file, then one bundled in `assets/icons/` (found by file name through `import.meta.glob`, and `icons/local/` overrides; they show before the agent's arrives and when it has none), then lucide `Server`. Nothing needs adding for a new service: the agent finds it (see **Icons** above). The agent's file needs the node's token, so `agent-icon.ts` fetches it through `AgentClient.getIcon` once per node, name and scheme, keeps the blob URL outside React state (like the connections) and shows it in an `<img>`, which also keeps each SVG's `<style>` from reaching the page. `ServiceIcon` works without a `ThemeProvider` (dark). The Sunstead products' icons come from `@sunstead/ui`; the mark here (`build-mark.mjs`) is the source of its Helion one.
+
 **Helion mark.** `app/scripts/build-mark.mjs` (`npm run build:mark`) turns the
 two Inkscape sources (`icon_simple.svg` light ink, `icon_simple_dark.svg` dark
 ink) into `public/favicon.svg`, which carries both palettes and switches on
