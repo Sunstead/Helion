@@ -29,21 +29,15 @@ describe('ServiceIcon', () => {
     expect(getIcon).not.toHaveBeenCalled();
   });
 
-  it('shows the bundled icon, then the one from the agent once it arrives', async () => {
+  it('shows the generic icon until the one from the agent arrives', async () => {
     const getIcon = vi.fn(async () => new Blob(['<svg/>'], { type: 'image/svg+xml' }));
     connection(getIcon);
-    const { container } = render(<ServiceIcon service='gitea' icon={{ nodeId: 'n1', name: 'gitea' }} />);
+    const { container } = render(<ServiceIcon service='jellyfin' icon={{ nodeId: 'n1', name: 'jellyfin' }} />);
     expect(container.querySelector('svg')).toBeTruthy();
 
     await waitFor(() => expect(container.querySelector('img')).toHaveAttribute('src', 'blob:icon'));
-    expect(getIcon).toHaveBeenCalledWith('gitea', 'dark');
+    expect(getIcon).toHaveBeenCalledWith('jellyfin', 'dark');
     expect(container.querySelector('svg')).toBeNull();
-  });
-
-  it('shows the icon the agent found for a service the app has never heard of', async () => {
-    connection(async () => new Blob(['<svg/>']));
-    const { container } = render(<ServiceIcon service='jellyfin' icon={{ nodeId: 'n1', name: 'jellyfin' }} />);
-    await waitFor(() => expect(container.querySelector('img')).toBeTruthy());
   });
 
   it('falls back to the generic icon when the agent has none', async () => {
