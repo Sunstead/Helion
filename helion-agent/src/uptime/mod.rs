@@ -695,6 +695,7 @@ mod tests {
             helion_service: service.map(Into::into),
             helion_service_description: None,
             helion_service_url: url.map(Into::into),
+            icon: None,
             cpu_pct: 0.0,
             mem_used_bytes: 0,
             mem_limit_bytes: 0,

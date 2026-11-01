@@ -8,6 +8,7 @@ mod backups;
 mod containers;
 mod events;
 mod host;
+mod icons;
 mod logs;
 mod meta;
 mod metrics;
@@ -66,6 +67,7 @@ pub fn router(state: AppState) -> Router {
         .route("/v1/containers/:id/logs/ws", get(logs::follow))
         .route("/v1/logs", get(logs::tail_all))
         .route("/v1/logs/ws", get(logs::follow_all))
+        .route("/v1/icons/:name", get(icons::get))
         .route("/v1/volumes", get(volumes::list))
         .route("/v1/volumes/stream", get(volumes::stream))
         .route("/v1/backups", get(backups::current))

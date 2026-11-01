@@ -305,7 +305,7 @@ export function CommandPalette() {
                               }),
                         )}
                       >
-                        <ServiceIcon service={group.key} size={16} />
+                        <ServiceIcon service={group.key} icon={group.icon} size={16} />
                         {group.name}
                         {nodes.length > 1 && multiple && (
                           <span className='text-xs text-muted-foreground'>{nameOf(instance.nodeId)}</span>

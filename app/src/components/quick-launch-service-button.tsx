@@ -26,7 +26,7 @@ export const QuickLaunchServiceButton = memo(function QuickLaunchServiceButton({
   const face = (
     <>
       <Dot variant={status.dotVariant} className='absolute top-1.5 right-1.5' />
-      <ServiceIcon service={group.key} size={24} />
+      <ServiceIcon service={group.key} icon={group.icon} size={24} />
       <span className='text-xs truncate max-w-full'>{group.name}</span>
     </>
   );

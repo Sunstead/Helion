@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { ContainerInfo } from '@/generated/ContainerInfo';
-import { deriveNodeServices, groupServices, userFacingGroups, userFacingServices } from './services';
+import { deriveNodeServices, groupServices, iconRef, userFacingGroups, userFacingServices } from './services';
 
 function container(partial: Partial<ContainerInfo>): ContainerInfo {
   return {
@@ -129,6 +129,29 @@ describe('deriveNodeServices', () => {
     ]);
     expect(services[0].description).toBe('Git hosting');
     expect(services[0].url).toBe('gitea.home.example.com');
+  });
+});
+
+describe('service icons', () => {
+  it('takes the icon most containers of a service share', () => {
+    const [service] = deriveNodeServices('n1', [
+      container({ id: 'a', name: 'a-db', helion_service: 'media', icon: 'postgres' }),
+      container({ id: 'b', name: 'b-app', helion_service: 'media', icon: 'jellyfin' }),
+      container({ id: 'c', name: 'c-app', helion_service: 'media', icon: 'jellyfin' }),
+    ]);
+    expect(service.icon).toBe('jellyfin');
+  });
+
+  it('is none when no container has one, as from an older agent', () => {
+    const [service] = deriveNodeServices('n1', [container({ id: 'a', helion_service: 'x' })]);
+    expect(service.icon).toBeNull();
+  });
+
+  it('names the node that has the icon, for a group', () => {
+    const a = deriveNodeServices('n1', [container({ helion_service: 'git' })]);
+    const b = deriveNodeServices('n2', [container({ helion_service: 'git', icon: 'gitea' })]);
+    expect(groupServices([...a, ...b])[0].icon).toEqual({ nodeId: 'n2', name: 'gitea' });
+    expect(iconRef(a)).toBeNull();
   });
 });
 

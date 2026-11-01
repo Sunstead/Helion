@@ -18,6 +18,7 @@ use crate::{
     config::Config,
     docker::DockerHandle,
     history::HistoryHandle,
+    icons::IconsHandle,
 };
 use docker::{ ContainerSnapshot, DockerProbe, VolumeSnapshot };
 use facts::HostFacts;
@@ -88,11 +89,12 @@ pub fn spawn_host(
 /// Containers. Async because it's all Docker I/O.
 pub fn spawn_containers(
     cfg: &Config,
-    docker: DockerHandle
+    docker: DockerHandle,
+    icons: Option<IconsHandle>
 ) -> watch::Receiver<Arc<ContainerSnapshot>> {
     let (tx, rx) = watch::channel(Arc::new(ContainerSnapshot::empty()));
     let period = Duration::from_millis(cfg.docker.interval_ms);
-    let mut probe = DockerProbe::new(cfg.docker.stats_concurrency);
+    let mut probe = DockerProbe::new(cfg.docker.stats_concurrency).with_icons(icons);
 
     tokio::spawn(async move {
         let mut ticker = tokio::time::interval(period);

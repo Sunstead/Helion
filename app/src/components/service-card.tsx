@@ -1,7 +1,7 @@
 import { memo } from 'react';
 import { ArrowUpRight } from 'lucide-react';
 import { ServiceIcon } from '@/lib/service-icons';
-import { ServiceGroup, ServiceInfo } from '@/lib/services';
+import { iconRef, ServiceGroup, ServiceInfo } from '@/lib/services';
 import { msToDuration } from '@/lib/time';
 import { NO_VALUE, plural } from '@/lib/format';
 import {
@@ -125,7 +125,7 @@ export const ServiceCard = memo(function ServiceCard({
     return (
       <Card className='gap-4 px-4 py-4'>
         <div className='flex items-start gap-3'>
-          <ServiceIcon service={service.key} size={32} className='shrink-0' />
+          <ServiceIcon service={service.key} icon={iconRef([service])} size={32} className='shrink-0' />
           <div className='min-w-0 flex-1'>
             <p className='truncate font-medium leading-5'>{service.name}</p>
             <p className='truncate text-xs text-muted-foreground'>
@@ -159,7 +159,7 @@ export const ServiceCard = memo(function ServiceCard({
   return (
     <Card className='gap-3 px-4 py-4'>
       <div className='flex items-start gap-3'>
-        <ServiceIcon service={group.key} size={32} className='shrink-0' />
+        <ServiceIcon service={group.key} icon={group.icon} size={32} className='shrink-0' />
         <div className='min-w-0 flex-1'>
           <p className='truncate font-medium leading-5'>{group.name}</p>
           <p className='truncate text-xs text-muted-foreground'>

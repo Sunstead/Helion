@@ -208,6 +208,21 @@ watch_minutes = 10
 # volume.
 path = "/var/lib/helion-agent/state.db"
 
+[icons]
+# Gives every service an icon without anyone choosing it: the agent matches
+# each container's `helion.icon` label, `helion.service`, image, compose
+# service and name against homarr-labs/dashboard-icons (Apache-2.0), fetches
+# the ones that match and keeps them beside state.db (`icons/`). Brand marks
+# belong to their owners and identify the service only. The only outbound
+# requests are for the index and for icons that match something running.
+# Set `helion.icon=<name>` on a container to pick one, or `helion.icon=none`.
+enabled = true
+# Where `metadata.json` and `svg/<name>.svg` come from. A mirror for a network
+# without internet, or a pinned ref: ".../dashboard-icons@<commit>".
+source = "https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons"
+# How old the index may get before it is fetched again.
+refresh_days = 7
+
 # Other agents this one watches, and that watch it: each reports the other
 # when it stops answering (`peer:<name>:unreachable`), which nothing on a node
 # can do about itself. One side dials (`url` set) and POSTs a heartbeat to the

@@ -13,6 +13,7 @@ mod docker;
 mod error;
 mod events;
 mod history;
+mod icons;
 mod labels;
 mod notify;
 mod peers;
@@ -136,7 +137,15 @@ async fn serve(cfg: Config, mode: config::AuthMode) -> Result<(), Box<dyn std::e
     let docker = DockerHandle::new(cfg.docker.socket.clone());
 
     let host_rx = sample::spawn_host(&cfg, facts.clone(), history.clone());
-    let containers_rx = sample::spawn_containers(&cfg, docker.clone());
+    let icons = cfg.icons.enabled.then(|| {
+        let poke = docker.clone();
+        icons::spawn(
+            &cfg.icons,
+            cfg.state.path.parent().unwrap_or_else(|| std::path::Path::new(".")).join("icons"),
+            move || poke.containers_changed().notify_one()
+        )
+    });
+    let containers_rx = sample::spawn_containers(&cfg, docker.clone(), icons.clone());
     let volumes_rx = sample::spawn_volumes(docker.clone());
 
     sample::spawn_self_identification(docker.clone(), facts.hostname.clone());
@@ -293,6 +302,7 @@ async fn serve(cfg: Config, mode: config::AuthMode) -> Result<(), Box<dyn std::e
         uptime,
         updates,
         peers,
+        icons,
         shutdown: shutdown.clone(),
         cfg: cfg.clone(),
     });

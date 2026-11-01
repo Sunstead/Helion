@@ -204,6 +204,15 @@ export class AgentClient {
     return this.request<PeersResponse>('/v1/peers');
   }
 
+  /** An icon the agent holds (`ContainerInfo.icon`), as the SVG that reads on `theme`. */
+  async getIcon(name: string, theme: 'dark' | 'light'): Promise<Blob> {
+    const res = await fetch(`${this.baseUrl}/v1/icons/${encodeURIComponent(name)}?theme=${theme}`, {
+      headers: this.headers(),
+    });
+    if (!res.ok) throw new AgentRequestError(res.status, null);
+    return res.blob();
+  }
+
   getUpdates(): Promise<UpdatesResponse> {
     return this.request<UpdatesResponse>('/v1/updates');
   }
