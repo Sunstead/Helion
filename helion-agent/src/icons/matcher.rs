@@ -6,7 +6,7 @@ use super::index::{ valid_name, Index };
 
 /// Names that are Sunstead's own. The app draws those itself, and an
 /// upstream icon with the same name belongs to someone else's product.
-const RESERVED: &[&str] = &["helion", "cosmos", "atlas", "solstice", "solstice-sync", "sunstead"];
+const RESERVED: &[&str] = &["helion", "cosmos", "atlas", "solstice", "solstice-sync", "swindle-games", "sunstead"];
 
 /// Image-name endings that name a flavour of the same product, tried after
 /// the whole name: `portainer-ce` is Portainer, `immich-server` is Immich.
