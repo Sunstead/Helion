@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="1024" height="1024" version="1.1" viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
+ <defs>
+  <!-- A gear whose teeth are the sun's rays, with the burst of energy in its hub. -->
+  <radialGradient id="halo" cx="8" cy="8" r="3.4" gradientTransform="matrix(1.9476 0 0 1.9476 -7.5807 -7.5807)" gradientUnits="userSpaceOnUse">
+   <stop stop-color="#fffdf0" offset="0"/>
+   <stop stop-color="#fff2b0" stop-opacity=".6" offset=".3"/>
+   <stop stop-color="#ffd060" stop-opacity="0" offset="1"/>
+  </radialGradient>
+  <radialGradient id="gear" cx="8" cy="8" r="4.5" gradientTransform="matrix(1.5092 0 0 1.5092 -4.0735 -4.0735)" gradientUnits="userSpaceOnUse">
+   <stop stop-color="#fff" offset=".3"/>
+   <stop stop-color="#fff0b8" stop-opacity=".92" offset=".7"/>
+   <stop stop-color="#ffd878" stop-opacity=".78" offset="1"/>
+  </radialGradient>
+  <linearGradient id="linearGradient8" x1="9.4517" x2="9.4517" y1="16" gradientUnits="userSpaceOnUse">
+   <stop stop-color="#903f0b" offset="0"/>
+   <stop stop-color="#ed8200" offset="1"/>
+  </linearGradient>
+ </defs>
+ <rect width="16" height="16" rx="4.75" fill="url(#linearGradient8)" stroke-linecap="round" stroke-linejoin="round" stroke-width=".013391" style="paint-order:stroke fill markers"/>
+ <circle cx="8" cy="8" r="6.6218" fill="url(#halo)" stroke-width="1.9476"/>
+ <path d="m7.3812 3.6686 0.3773-2.3091h0.48294l0.3773 2.3091a4.3766 4.3766 0 0 1 1.0112 0.27165l1.479-1.811 0.42257 0.24147-0.83005 2.1883a4.3766 4.3766 0 0 1 0.7395 0.7395l2.1883-0.83005 0.24147 0.42257-1.811 1.479a4.3766 4.3766 0 0 1 0.27165 1.0112l2.3091 0.3773v0.48294l-2.3091 0.3773a4.3766 4.3766 0 0 1-0.27165 1.0112l1.811 1.479-0.24147 0.42257-2.1883-0.83005a4.3766 4.3766 0 0 1-0.7395 0.7395l0.83005 2.1883-0.42257 0.24147-1.479-1.811a4.3766 4.3766 0 0 1-1.0112 0.27165l-0.3773 2.3091h-0.48294l-0.3773-2.3091a4.3766 4.3766 0 0 1-1.0112-0.27165l-1.479 1.811-0.42257-0.24147 0.83005-2.1883a4.3766 4.3766 0 0 1-0.7395-0.7395l-2.1883 0.83005-0.24147-0.42257 1.811-1.479a4.3766 4.3766 0 0 1-0.27165-1.0112l-2.3091-0.3773v-0.48294l2.3091-0.3773a4.3766 4.3766 0 0 1 0.27165-1.0112l-1.811-1.479 0.24147-0.42257 2.1883 0.83005a4.3766 4.3766 0 0 1 0.7395-0.7395l-0.83005-2.1883 0.42257-0.24147 1.479 1.811a4.3766 4.3766 0 0 1 1.0112-0.27165zm-2.0223 4.3314a2.6411 2.6411 0 1 0 5.2822 0 2.6411 2.6411 0 1 0-5.2822 0z" fill="url(#gear)" fill-rule="evenodd" stroke-width="1.5092"/>
+ <circle cx="8" cy="8" r="1.811" fill="#ffffff" stroke-width="1.5092"/>
+</svg>

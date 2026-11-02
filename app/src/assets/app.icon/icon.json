@@ -1,116 +1,124 @@
 {
-  "fill" : {
-    "linear-gradient" : [
-      "display-p3:0.56332,0.24503,0.00000,1.00000",
-      "display-p3:0.32156,0.15030,0.00000,1.00000"
-    ]
-  },
-  "groups" : [
+  "fill-specializations": [
     {
-      "layers" : [
-        {
-          "glass" : false,
-          "image-name" : "helion_ring.svg",
-          "name" : "helion_ring",
-          "position" : {
-            "scale" : 1,
-            "translation-in-points" : [
-              0,
-              0
-            ]
+      "value": {
+        "linear-gradient": [
+          "srgb:0.92941,0.50980,0.00000,1.00000",
+          "srgb:0.56471,0.24706,0.04314,1.00000"
+        ],
+        "orientation": {
+          "start": {
+            "x": 0.5,
+            "y": 0
+          },
+          "stop": {
+            "x": 0.5,
+            "y": 1
           }
         }
-      ],
-      "shadow" : {
-        "kind" : "neutral",
-        "opacity" : 0.35
-      },
-      "specular" : false,
-      "translucency" : {
-        "enabled" : false,
-        "value" : 0.5
       }
     },
     {
-      "layers" : [
-        {
-          "glass" : false,
-          "image-name" : "helion_core.svg",
-          "name" : "helion_core",
-          "position" : {
-            "scale" : 1,
-            "translation-in-points" : [
-              0,
-              0
-            ]
+      "appearance": "dark",
+      "value": {
+        "linear-gradient": [
+          "srgb:0.30000,0.14000,0.03500,1.00000",
+          "srgb:0.08000,0.03800,0.01000,1.00000"
+        ],
+        "orientation": {
+          "start": {
+            "x": 0.5,
+            "y": 0
+          },
+          "stop": {
+            "x": 0.5,
+            "y": 1
           }
         }
-      ],
-      "shadow" : {
-        "kind" : "neutral",
-        "opacity" : 0.5
-      },
-      "specular" : false,
-      "translucency" : {
-        "enabled" : false,
-        "value" : 0.5
-      }
-    },
-    {
-      "layers" : [
-        {
-          "glass" : false,
-          "image-name" : "helion_sun.svg",
-          "name" : "helion_sun",
-          "position" : {
-            "scale" : 1,
-            "translation-in-points" : [
-              0,
-              0
-            ]
-          }
-        }
-      ],
-      "shadow" : {
-        "kind" : "neutral",
-        "opacity" : 0.5
-      },
-      "specular" : false,
-      "translucency" : {
-        "enabled" : false,
-        "value" : 0.5
-      }
-    },
-    {
-      "layers" : [
-        {
-          "glass" : false,
-          "image-name" : "helion_glow.svg",
-          "name" : "helion_glow",
-          "position" : {
-            "scale" : 1,
-            "translation-in-points" : [
-              0,
-              0
-            ]
-          }
-        }
-      ],
-      "shadow" : {
-        "kind" : "none",
-        "opacity" : 0
-      },
-      "specular" : false,
-      "translucency" : {
-        "enabled" : false,
-        "value" : 0.5
       }
     }
   ],
-  "supported-platforms" : {
-    "circles" : [
+  "groups": [
+    {
+      "layers": [
+        {
+          "glass": false,
+          "image-name": "helion_core.svg",
+          "name": "helion_core",
+          "position": {
+            "scale": 1,
+            "translation-in-points": [
+              0,
+              0
+            ]
+          }
+        }
+      ],
+      "shadow": {
+        "kind": "none",
+        "opacity": 0
+      },
+      "specular": false,
+      "translucency": {
+        "enabled": false,
+        "value": 0.5
+      }
+    },
+    {
+      "layers": [
+        {
+          "glass": false,
+          "image-name": "helion_gear.svg",
+          "name": "helion_gear",
+          "position": {
+            "scale": 1,
+            "translation-in-points": [
+              0,
+              0
+            ]
+          }
+        }
+      ],
+      "shadow": {
+        "kind": "neutral",
+        "opacity": 0.5
+      },
+      "specular": false,
+      "translucency": {
+        "enabled": false,
+        "value": 0.5
+      }
+    },
+    {
+      "layers": [
+        {
+          "glass": false,
+          "image-name": "helion_halo.svg",
+          "name": "helion_halo",
+          "position": {
+            "scale": 1,
+            "translation-in-points": [
+              0,
+              0
+            ]
+          }
+        }
+      ],
+      "shadow": {
+        "kind": "none",
+        "opacity": 0
+      },
+      "specular": false,
+      "translucency": {
+        "enabled": false,
+        "value": 0.5
+      }
+    }
+  ],
+  "supported-platforms": {
+    "circles": [
       "watchOS"
     ],
-    "squares" : "shared"
+    "squares": "shared"
   }
 }
