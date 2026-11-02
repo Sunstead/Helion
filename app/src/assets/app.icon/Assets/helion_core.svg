@@ -1,11 +1,4 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <svg width="1024" height="1024" viewBox="0 0 16 16" version="1.1" xmlns="http://www.w3.org/2000/svg">
- <defs>
-  <radialGradient id="c" cx="8" cy="8" r="3.601" gradientUnits="userSpaceOnUse">
-   <stop offset="0" stop-color="#fff"/>
-   <stop offset=".24841" stop-color="#fff" stop-opacity=".18301"/>
-   <stop offset="1" stop-color="#fff" stop-opacity="0"/>
-  </radialGradient>
- </defs>
- <circle cx="8" cy="8" r="3.601" fill="url(#c)"/>
+ <circle cx="8" cy="8" r="1.81" fill="#fff"/>
 </svg>
