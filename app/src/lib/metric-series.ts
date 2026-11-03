@@ -1,9 +1,12 @@
+import { ContainerHistory } from '@/generated/ContainerHistory';
+import { ContainerSeries } from '@/generated/ContainerSeries';
 import { MetricSeries } from '@/generated/MetricSeries';
 
+/** `null` where there's no bucket, so the chart breaks the line. */
 export interface ChartRow {
   ts: number;
-  value: number;
-  peak: number;
+  value: number | null;
+  peak: number | null;
 }
 
 export type NumericKey = {
@@ -53,4 +56,37 @@ export function mergeSeries(
     });
   }
   return [...rows.values()].sort((a, b) => a.ts - b.ts);
+}
+
+export type ContainerKey = {
+  [K in keyof ContainerHistory]: ContainerHistory[K] extends (number | null)[] ? K : never;
+}[keyof ContainerHistory];
+
+/**
+ * One metric for every container in the response, a column each keyed by
+ * container name. The agent already puts them on one time axis.
+ */
+export function containerRows(series: ContainerSeries | undefined, key: ContainerKey): CompareRow[] {
+  if (!series) return [];
+  return series.ts.map((ts, i) => {
+    const row = { ts: ts * 1000 } as CompareRow;
+    for (const c of series.containers) row[c.name] = c[key][i] ?? null;
+    return row;
+  });
+}
+
+/** One container's metric as average and peak rows, for a `MetricChart`. */
+export function containerChartRows(
+  series: ContainerSeries | undefined,
+  name: string,
+  key: ContainerKey,
+  peakKey: ContainerKey = key,
+): ChartRow[] {
+  const c = series?.containers.find((x) => x.name === name);
+  if (!series || !c) return [];
+  return series.ts.map((ts, i) => ({
+    ts: ts * 1000,
+    value: c[key][i] ?? null,
+    peak: c[peakKey][i] ?? c[key][i] ?? null,
+  }));
 }

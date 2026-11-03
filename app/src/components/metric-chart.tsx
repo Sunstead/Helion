@@ -1,4 +1,5 @@
 import { Area, AreaChart, CartesianGrid, Legend, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
+import { ReactNode } from 'react';
 import { ChartRow, CompareRow } from '@/lib/metric-series';
 import { Section } from './section';
 
@@ -32,6 +33,8 @@ export function CompareChart({
   nodes,
   format,
   max,
+  actions,
+  gaps = false,
 }: {
   title: string;
   rows: CompareRow[];
@@ -39,11 +42,18 @@ export function CompareChart({
   nodes: { id: string; name: string }[];
   format: (v: number) => string;
   max?: number;
+  actions?: ReactNode;
+  /**
+   * Break lines across nulls instead of bridging them. Nodes bucket
+   * independently, so their nulls are misalignment; a container's are time
+   * it wasn't running. Also sorts the tooltip, largest first.
+   */
+  gaps?: boolean;
 }) {
   const span = rows.length > 1 ? rows[rows.length - 1].ts - rows[0].ts : 0;
 
   return (
-    <Section title={title} contentClassName='aspect-[5/2] min-h-40 p-2 pr-4'>
+    <Section title={title} actions={actions} contentClassName='aspect-[5/2] min-h-40 p-2 pr-4'>
       <ResponsiveContainer width='100%' height='100%'>
         <LineChart data={rows} margin={{ top: 8, right: 0, bottom: 0, left: 0 }}>
           <CartesianGrid stroke='var(--color-border)' vertical={false} />
@@ -68,6 +78,7 @@ export function CompareChart({
             contentStyle={TOOLTIP_STYLE}
             labelFormatter={(v) => new Date(Number(v)).toLocaleString()}
             formatter={(v) => format(Number(v))}
+            itemSorter={gaps ? (item) => -Number(item.value ?? 0) : undefined}
           />
           <Legend iconType='plainline' wrapperStyle={{ fontSize: 12 }} />
           {nodes.map((n, i) => (
@@ -80,7 +91,7 @@ export function CompareChart({
               strokeDasharray={NODE_DASHES[i % NODE_DASHES.length]}
               strokeWidth={1.5}
               dot={false}
-              connectNulls
+              connectNulls={!gaps}
               isAnimationActive={false}
             />
           ))}

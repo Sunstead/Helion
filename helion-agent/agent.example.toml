@@ -113,6 +113,11 @@ flush_interval_secs = 10
 retain_1s_secs = 3600      # 1 hour of full-resolution samples
 retain_1m_secs = 604800    # 7 days at 1-minute buckets
 retain_5m_secs = 7776000   # 90 days at 5-minute buckets
+# Per-container history, for "which container was it?". One row per container
+# per minute; about 50 MB for 40 containers at these defaults.
+containers = true
+retain_containers_1m_secs = 604800    # 7 days at 1-minute buckets
+retain_containers_5m_secs = 2592000   # 30 days at 5-minute buckets
 
 [backups]
 # Reads the status file your restic job writes. The agent never runs restic,
@@ -171,6 +176,13 @@ retain_days = 180
 # 5 points below.
 disk_warn_pct = 85
 disk_critical_pct = 95
+# Sustained pressure, judged on averages so a burst never opens anything:
+# CPU over 10 minutes, memory over 5 (97% over 2 is an error). 0 turns one off.
+cpu_warn_pct = 90
+memory_warn_pct = 90
+# A disk that will be full within this many days, at the rate it filled over
+# the last day, opens a warning. Needs 6 hours of samples first. 0 turns it off.
+disk_full_days = 7
 
 [uptime]
 # The Uptime page: an HTTP check for every service with a helion.service.url

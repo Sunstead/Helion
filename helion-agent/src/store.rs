@@ -138,6 +138,15 @@ const MIGRATIONS: &[&str] = &[
     // through one.
     "ALTER TABLE problems ADD COLUMN depends_on TEXT;
     ALTER TABLE uptime_checks ADD COLUMN via_peer TEXT;",
+    // 0.15: services learned from what runs, so one that stops being there
+    // is reported.
+    "CREATE TABLE expected_services (
+        service      TEXT    PRIMARY KEY,
+        first_seen   INTEGER NOT NULL,
+        last_running INTEGER NOT NULL,
+        stopped_by   TEXT,
+        stopped_at   INTEGER
+    );",
 ];
 
 #[derive(Clone)]

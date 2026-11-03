@@ -13,6 +13,7 @@ import { NodeUnavailable } from '@/components/sign-in';
 import { SETUP } from '@/lib/setup';
 import { CompareChart, MetricChart } from '@/components/metric-chart';
 import { mergeSeries, NumericKey, toRows } from '@/lib/metric-series';
+import { TopContainers } from '@/components/top-containers';
 import { Skeleton } from '@sunstead/ui/components/skeleton';
 
 const RANGES = {
@@ -134,10 +135,15 @@ export function MonitoringPage() {
       );
     }
     return (
-      <div className={GRID}>
-        {charts.map((c) => (
-          <MetricChart key={c.title} {...c} />
-        ))}
+      <div className='flex flex-col gap-4'>
+        <div className={GRID}>
+          {charts.map((c) => (
+            <MetricChart key={c.title} {...c} />
+          ))}
+        </div>
+        {meta?.capabilities.container_history && (
+          <TopContainers nodeId={nodeId} rangeSeconds={RANGES[range] ?? RANGES['1h']} />
+        )}
       </div>
     );
   };

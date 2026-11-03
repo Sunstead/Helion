@@ -50,6 +50,14 @@ fn action(state: &AppState, id: &str, kind: &'static str, verb: &str, past: &str
     }
 }
 
+/// A stop or removal through Helion is deliberate, so the service it leaves
+/// without a running container isn't reported missing.
+fn stopped_on_purpose<T>(state: &AppState, by: &Principal, action: &Action, result: &Result<T, AgentError>) {
+    if let (Ok(_), Some(services), Some(service)) = (result, &state.services, &action.service) {
+        services.stopped(service, &by.name);
+    }
+}
+
 /// `timeout_secs` is optional in the body; an absent body is fine too.
 fn timeout_of(body: Option<Json<ContainerActionRequest>>) -> Option<u32> {
     body.and_then(|Json(b)| b.timeout_secs)
@@ -74,6 +82,7 @@ pub async fn stop(
 ) -> Result<Json<ContainerActionResult>, AgentError> {
     let action = action(&state, &id, "container_stop", "stop", "Stopped");
     let result = state.docker.stop(&id, timeout_of(body)).await;
+    stopped_on_purpose(&state, &by, &action, &result);
     record_action(&state, &by, action, &result);
     result.map(Json)
 }
@@ -107,6 +116,7 @@ pub async fn remove(
 ) -> Result<Json<ContainerActionResult>, AgentError> {
     let action = action(&state, &id, "container_remove", "remove", "Removed");
     let result = state.docker.remove(&id, q.force, q.volumes).await;
+    stopped_on_purpose(&state, &by, &action, &result);
     record_action(&state, &by, action, &result);
     result.map(Json)
 }

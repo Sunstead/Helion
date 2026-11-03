@@ -87,14 +87,20 @@ pub fn spawn_host(
 }
 
 /// Containers. Async because it's all Docker I/O.
+///
+/// With history, each snapshot is also folded into the current minute, and a
+/// closed minute goes to the writer in one batch.
 pub fn spawn_containers(
     cfg: &Config,
     docker: DockerHandle,
-    icons: Option<IconsHandle>
+    icons: Option<IconsHandle>,
+    history: Option<HistoryHandle>
 ) -> watch::Receiver<Arc<ContainerSnapshot>> {
     let (tx, rx) = watch::channel(Arc::new(ContainerSnapshot::empty()));
     let period = Duration::from_millis(cfg.docker.interval_ms);
     let mut probe = DockerProbe::new(cfg.docker.stats_concurrency).with_icons(icons);
+    let history = history.filter(HistoryHandle::keeps_containers);
+    let mut minute = crate::history::containers::MinuteAccumulator::default();
 
     tokio::spawn(async move {
         let mut ticker = tokio::time::interval(period);
@@ -127,6 +133,11 @@ pub fn spawn_containers(
                     if failing {
                         tracing::info!("docker container sampling recovered");
                         failing = false;
+                    }
+                    if let Some(h) = &history {
+                        if let Some(rows) = minute.add(snapshot.sampled_at, &snapshot.containers) {
+                            h.push_containers(rows);
+                        }
                     }
                     if tx.send(Arc::new(snapshot)).is_err() {
                         return;

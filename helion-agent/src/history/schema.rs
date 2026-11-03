@@ -81,9 +81,67 @@ const DDL: &str = "
     );
 ";
 
+/// Per-container history (0.15). Keyed by name, which survives a Compose
+/// recreate, through a small dictionary so each row carries an integer.
+///
+/// `(ts, series)` as the key: every read is a time range, and the "top N"
+/// query wants every container in it. There is no 1s tier; the live table
+/// covers the last minutes. The IO columns are nullable because a container
+/// on the host network has no traffic of its own.
+const CONTAINERS: &str = "
+    CREATE TABLE container_series (
+        id        INTEGER PRIMARY KEY,
+        name      TEXT    NOT NULL UNIQUE,
+        service   TEXT,
+        last_seen INTEGER NOT NULL
+    );
+
+    CREATE TABLE containers_1m (
+        ts        INTEGER NOT NULL,
+        series    INTEGER NOT NULL,
+        cpu_avg   REAL    NOT NULL,
+        cpu_max   REAL    NOT NULL,
+        mem_avg   REAL    NOT NULL,
+        mem_max   REAL    NOT NULL,
+        net_rx    REAL,
+        net_tx    REAL,
+        blk_read  REAL,
+        blk_write REAL,
+        n         INTEGER NOT NULL,
+        PRIMARY KEY (ts, series)
+    ) WITHOUT ROWID;
+
+    CREATE TABLE containers_5m (
+        ts        INTEGER NOT NULL,
+        series    INTEGER NOT NULL,
+        cpu_avg   REAL    NOT NULL,
+        cpu_max   REAL    NOT NULL,
+        mem_avg   REAL    NOT NULL,
+        mem_max   REAL    NOT NULL,
+        net_rx    REAL,
+        net_tx    REAL,
+        blk_read  REAL,
+        blk_write REAL,
+        n         INTEGER NOT NULL,
+        PRIMARY KEY (ts, series)
+    ) WITHOUT ROWID;
+";
+
+/// Append only: never edit a migration that has shipped. The first is the
+/// schema from before there were migrations, `IF NOT EXISTS` throughout, so a
+/// database an older agent made adopts it unchanged. An older agent opening a
+/// newer database only runs that first one, and ignores tables it doesn't know.
+const MIGRATIONS: &[&str] = &[DDL, CONTAINERS];
+
 pub fn init(conn: &Connection) -> rusqlite::Result<()> {
     conn.execute_batch(PRAGMAS)?;
-    conn.execute_batch(DDL)?;
+    let current: usize = conn.query_row("PRAGMA user_version", [], |r| r.get(0))?;
+    for (i, sql) in MIGRATIONS.iter().enumerate().skip(current) {
+        let tx = conn.unchecked_transaction()?;
+        tx.execute_batch(sql)?;
+        tx.pragma_update(None, "user_version", i + 1)?;
+        tx.commit()?;
+    }
     Ok(())
 }
 
@@ -103,4 +161,35 @@ pub fn set_cursor(conn: &Connection, key: &str, value: i64) -> rusqlite::Result<
         rusqlite::params![key, value.to_string()]
     )?;
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn version(conn: &Connection) -> usize {
+        conn.query_row("PRAGMA user_version", [], |r| r.get(0)).unwrap()
+    }
+
+    #[test]
+    fn a_database_from_before_migrations_keeps_its_rows_and_gains_the_new_tables() {
+        let conn = Connection::open_in_memory().unwrap();
+        // What 0.14 and earlier did: the DDL, no version.
+        conn.execute_batch(DDL).unwrap();
+        conn.execute("INSERT INTO metrics_1s VALUES (1, 5.0, 1, 0, 0, 0, 0, 0, 0)", []).unwrap();
+
+        init(&conn).unwrap();
+        assert_eq!(version(&conn), MIGRATIONS.len());
+        let kept: i64 = conn.query_row("SELECT count(*) FROM metrics_1s", [], |r| r.get(0)).unwrap();
+        assert_eq!(kept, 1);
+        conn.execute("INSERT INTO container_series (name, last_seen) VALUES ('a', 1)", []).unwrap();
+    }
+
+    #[test]
+    fn init_is_idempotent() {
+        let conn = Connection::open_in_memory().unwrap();
+        init(&conn).unwrap();
+        init(&conn).unwrap();
+        assert_eq!(version(&conn), MIGRATIONS.len());
+    }
 }

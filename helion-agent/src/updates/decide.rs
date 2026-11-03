@@ -133,6 +133,10 @@ mod tests {
             cpu_pct: 0.0,
             mem_used_bytes: 0,
             mem_limit_bytes: 0,
+            net_rx_bps: None,
+            net_tx_bps: None,
+            blk_read_bps: None,
+            blk_write_bps: None,
         }
     }
 

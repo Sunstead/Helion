@@ -2,6 +2,8 @@ import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore
 import { useQueries, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { HostInfo } from '@/generated/HostInfo';
+import { ContainerRank } from '@/generated/ContainerRank';
+import { ExpectedService } from '@/generated/ExpectedService';
 import { MetricStep } from '@/generated/MetricStep';
 import { UpdatePolicy } from '@/generated/UpdatePolicy';
 import { UpdatesResponse } from '@/generated/UpdatesResponse';
@@ -152,6 +154,40 @@ export function useMetricHistories(
       loading: results.some((r) => r.isLoading),
       error: results.length > 0 && results.every((r) => r.error) ? results[0].error!.message : null,
     }),
+  });
+}
+
+/**
+ * Per-container history from one node: the named containers, else the top
+ * `limit` by `top` over the range. Disabled without `container_history`.
+ */
+export function useContainerHistory(
+  nodeId: string | null,
+  opts: { rangeSeconds: number; names?: string[]; top?: ContainerRank; limit?: number; maxPoints?: number },
+) {
+  const meta = useNodeMeta(nodeId);
+  const supported = meta?.capabilities.container_history ?? false;
+  const names = opts.names?.join(',');
+
+  return useQuery({
+    queryKey: ['container-metrics', nodeId, opts.rangeSeconds, names, opts.top, opts.limit, opts.maxPoints],
+    queryFn: () => {
+      const conn = getConnection(nodeId!);
+      if (!conn) throw new Error('node is not connected');
+      const to = Math.floor(Date.now() / 1000);
+      return conn.client.getContainerMetrics({
+        from: to - opts.rangeSeconds,
+        to,
+        maxPoints: opts.maxPoints ?? 600,
+        names: opts.names,
+        top: opts.top,
+        limit: opts.limit,
+      });
+    },
+    enabled: !!nodeId && supported && meta?.status === 'online',
+    staleTime: 15_000,
+    refetchInterval: 60_000,
+    retry: 1,
   });
 }
 
@@ -510,6 +546,67 @@ export function useUpdateActions() {
     policy: (nodeId: string, unit: UpdateUnit, policy: UpdatePolicy) =>
       run(nodeId, `change updates for ${unit.name}`, (c) => c.client.setUpdatePolicy(unit.id, policy)),
   };
+}
+
+export interface ExpectedItem extends ExpectedService {
+  nodeId: string;
+}
+
+/**
+ * Services each node expects to be running, from every node that tracks
+ * them. Problems reach the app through the event log; this is for the list.
+ */
+export function useExpectedServices(pollMs = 30_000) {
+  const nodesKey = useNodeStore((s) =>
+    s.nodes
+      .filter((n) => s.meta[n.id]?.status === 'online' && s.meta[n.id]?.capabilities.expected_services)
+      .map((n) => n.id)
+      .join('|'),
+  );
+  const nodes = nodesKey ? nodesKey.split('|') : [];
+
+  return useQueries({
+    queries: nodes.map((nodeId) => ({
+      queryKey: ['expected-services', nodeId],
+      queryFn: () => {
+        const conn = getConnection(nodeId);
+        if (!conn) throw new Error('node is not connected');
+        return conn.client.getExpectedServices();
+      },
+      refetchInterval: pollMs,
+      retry: 1,
+    })),
+    combine: (results) => {
+      const items: ExpectedItem[] = [];
+      results.forEach((r, i) => {
+        for (const s of r.data?.services ?? []) items.push({ ...s, nodeId: nodes[i] });
+      });
+      return items;
+    },
+  });
+}
+
+/** Stops a node expecting a service, with toasts. */
+export function useForgetService() {
+  const client = useQueryClient();
+  return useCallback(
+    async (nodeId: string, service: string) => {
+      const conn = getConnection(nodeId);
+      if (!conn) throw new Error('node is not connected');
+      try {
+        await conn.client.forgetExpectedService(service);
+        toast.success(`Stopped expecting ${service}`, {
+          description: 'It is expected again once it has run for 10 minutes.',
+        });
+      } catch (e) {
+        toast.error(`Could not forget ${service}`, { description: e instanceof Error ? e.message : undefined });
+        throw e;
+      } finally {
+        await client.invalidateQueries({ queryKey: ['expected-services', nodeId] });
+      }
+    },
+    [client],
+  );
 }
 
 const UPTIME_POLL_MS = 30_000;

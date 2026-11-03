@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { alertsFor, dayLabel, mergeEvents, mergeProblems, wantedOnDevice } from './events';
+import { alertsFor, categoryOf, dayLabel, mergeEvents, mergeProblems, wantedOnDevice } from './events';
 import { event, problem } from '@/test/fixtures';
 
 const resolved = event({ severity: 'warning', title: 'gitea is healthy again', problem: { key: 'k', state: 'resolved' } });
@@ -75,5 +75,12 @@ describe('dayLabel', () => {
     expect(dayLabel(at(new Date(2026, 8, 24, 0, 5)), now)).toBe('Today');
     expect(dayLabel(at(new Date(2026, 8, 23, 23, 59)), now)).toBe('Yesterday');
     expect(dayLabel(at(new Date(2026, 8, 20, 9, 0)), now)).not.toMatch(/Today|Yesterday/);
+  });
+});
+
+describe('categoryOf', () => {
+  it('falls back for a category a newer agent sends', () => {
+    expect(categoryOf('service').label).toBe('Service');
+    expect(categoryOf('quantum' as never).label).toBe('quantum');
   });
 });
