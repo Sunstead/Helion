@@ -49,11 +49,18 @@ describe('generated mark', () => {
 });
 
 describe('ServiceIcon', () => {
-  it('renders the Helion mark with themed gradient stops', () => {
+  it('renders the Helion app tile at its size, even where CSS sizes svgs', () => {
     const { container } = render(React.createElement(ServiceIcon, { service: 'helion', size: 24 }));
-    const stops = container.querySelectorAll('stop');
-    expect(stops).toHaveLength(2);
-    expect(stops[0].getAttribute('style')).toContain('var(--mark-0');
-    expect(container.querySelector('svg')).toHaveAttribute('width', '24');
+    const svg = container.querySelector('svg')!;
+    expect(svg.querySelector('[id^="sunstead-helion"]')).not.toBeNull();
+    expect(svg).toHaveAttribute('width', '24');
+    // A Button's `[&_svg]:size-4` beats the attributes; only inline wins.
+    expect(svg.style.width).toBe('24px');
+    expect(svg.style.height).toBe('24px');
+  });
+
+  it('treats the old Cosmos names as Helion', () => {
+    const { container } = render(React.createElement(ServiceIcon, { service: 'cosmos-agent' }));
+    expect(container.querySelector('[id^="sunstead-helion"]')).not.toBeNull();
   });
 });

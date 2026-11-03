@@ -1,5 +1,5 @@
 import { Area, AreaChart, CartesianGrid, Legend, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
-import { ReactNode } from 'react';
+import { ReactElement, ReactNode } from 'react';
 import { ChartRow, CompareRow } from '@/lib/metric-series';
 import { Section } from './section';
 
@@ -10,6 +10,33 @@ function timeTick(spanMs: number) {
     new Date(v).toLocaleString([], spanMs > 86_400_000
       ? { month: 'short', day: 'numeric' }
       : { hour: '2-digit', minute: '2-digit' });
+}
+
+/**
+ * Recharts wraps a tick label at its spaces when it's wider than the axis
+ * thinks it has, which split "8.6 MB/s" over two lines. A no-break space
+ * keeps each value on one.
+ */
+function axisTick(format: (v: number) => string) {
+  return (v: number) => format(v).replace(/ /g, '\u00a0');
+}
+
+/**
+ * The chart's frame. The padding sits outside the aspect-ratio box and the
+ * chart is pinned inside it with absolute insets: WebKit (the desktop app)
+ * resolved `height: 100%` against a padded aspect-ratio box's full height,
+ * so the chart ran one padding past the card and the legend was cut off.
+ */
+function ChartBox({ children }: { children: ReactElement }) {
+  return (
+    <div className='relative aspect-[5/2] min-h-36'>
+      <div className='absolute inset-0'>
+        <ResponsiveContainer width='100%' height='100%'>
+          {children}
+        </ResponsiveContainer>
+      </div>
+    </div>
+  );
 }
 
 const TOOLTIP_STYLE = {
@@ -53,8 +80,8 @@ export function CompareChart({
   const span = rows.length > 1 ? rows[rows.length - 1].ts - rows[0].ts : 0;
 
   return (
-    <Section title={title} actions={actions} contentClassName='aspect-[5/2] min-h-40 p-2 pr-4'>
-      <ResponsiveContainer width='100%' height='100%'>
+    <Section title={title} actions={actions} contentClassName='p-2 pr-4'>
+      <ChartBox>
         <LineChart data={rows} margin={{ top: 8, right: 0, bottom: 0, left: 0 }}>
           <CartesianGrid stroke='var(--color-border)' vertical={false} />
           <XAxis
@@ -68,7 +95,7 @@ export function CompareChart({
           />
           <YAxis
             domain={[0, max ?? 'auto']}
-            tickFormatter={format}
+            tickFormatter={axisTick(format)}
             width={64}
             axisLine={false}
             {...AXIS}
@@ -96,7 +123,7 @@ export function CompareChart({
             />
           ))}
         </LineChart>
-      </ResponsiveContainer>
+      </ChartBox>
     </Section>
   );
 }
@@ -118,8 +145,8 @@ export function MetricChart({
   const span = rows.length > 1 ? rows[rows.length - 1].ts - rows[0].ts : 0;
 
   return (
-    <Section title={title} contentClassName='aspect-[5/2] min-h-40 p-2 pr-4'>
-      <ResponsiveContainer width='100%' height='100%'>
+    <Section title={title} contentClassName='p-2 pr-4'>
+      <ChartBox>
         <AreaChart data={rows} margin={{ top: 8, right: 0, bottom: 0, left: 0 }}>
           <CartesianGrid stroke='var(--color-border)' vertical={false} />
           <XAxis
@@ -133,7 +160,7 @@ export function MetricChart({
           />
           <YAxis
             domain={[0, max ?? 'auto']}
-            tickFormatter={format}
+            tickFormatter={axisTick(format)}
             width={64}
             axisLine={false}
             {...AXIS}
@@ -160,7 +187,7 @@ export function MetricChart({
             isAnimationActive={false}
           />
         </AreaChart>
-      </ResponsiveContainer>
+      </ChartBox>
     </Section>
   );
 }
