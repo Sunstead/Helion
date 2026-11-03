@@ -38,6 +38,12 @@ describe('backupHealth', () => {
     expect(backupHealth(status({ last_exit_code: 3 }))).toBe('failed');
   });
 
+  it('flags a failed step even when the job exited 0', () => {
+    const offsite = { ok: false, at: null, message: 'pluto unreachable' };
+    expect(backupHealth(status({ offsite_copy: offsite }))).toBe('failed');
+    expect(backupHealth(status({ offsite_copy: null }))).toBe('healthy');
+  });
+
   it('flags staleness', () => {
     expect(backupHealth(status({ stale: true }))).toBe('stale');
   });

@@ -102,6 +102,21 @@ pub struct HostInfo {
     /// (seq goes backwards) and dropped samples.
     #[ts(type = "number")]
     pub seq: u64,
+    /// The host's temperature sensors, read every 10 s. Empty where the agent
+    /// can't see any (no `/sys/class/hwmon`), and from agents before 0.17.
+    #[serde(default)]
+    pub temps: Vec<TempReading>,
+}
+
+/// One temperature sensor.
+#[derive(Serialize, Deserialize, TS, Debug, Clone, PartialEq)]
+#[ts(export, export_to = "../../app/src/generated/")]
+pub struct TempReading {
+    /// The sensor's name as the kernel gives it, e.g. "coretemp Package id 0".
+    pub label: String,
+    pub celsius: f32,
+    /// Where the hardware itself calls it critical, when it says.
+    pub critical: Option<f32>,
 }
 
 #[cfg(test)]

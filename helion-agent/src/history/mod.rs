@@ -527,6 +527,7 @@ mod tests {
             net_tx_bps: 0.0,
             uptime_secs: 0,
             sampled_at: 0,
+            temps: vec![],
         };
         let row = Row::from(&sample);
         assert_eq!((row.disk_read_bps, row.disk_write_bps), (110.0, 220.0));

@@ -8,6 +8,7 @@ import { EventsResponse } from '@/generated/EventsResponse';
 import { HostInfo } from '@/generated/HostInfo';
 import { LogsResponse } from '@/generated/LogsResponse';
 import { ContainerRank } from '@/generated/ContainerRank';
+import { DiskHealthStatus } from '@/generated/DiskHealthStatus';
 import { EventLogs } from '@/generated/EventLogs';
 import { ExpectedServicesResponse } from '@/generated/ExpectedServicesResponse';
 import { Silence } from '@/generated/Silence';
@@ -92,6 +93,7 @@ export const LEGACY_CAPABILITIES: Capabilities = {
   expected_services: false,
   alert_actions: false,
   event_logs: false,
+  disk_health: false,
 };
 
 /**
@@ -197,6 +199,10 @@ export class AgentClient {
 
   getVolumes(): Promise<VolumesResponse> {
     return this.request<VolumesResponse>('/v1/volumes');
+  }
+
+  getDiskHealth(): Promise<DiskHealthStatus> {
+    return this.request<DiskHealthStatus>('/v1/hardware/disks');
   }
 
   getBackups(): Promise<BackupsStatus> {

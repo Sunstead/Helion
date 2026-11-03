@@ -34,6 +34,7 @@ import { Hint } from '@/components/hint';
 import { Progress } from '@sunstead/ui/components/progress';
 import { Skeleton } from '@sunstead/ui/components/skeleton';
 import { PeersSection } from '@/components/peers-section';
+import { HardwareSection } from '@/components/hardware-section';
 
 function Spec({ label, children }: { label: string; children: React.ReactNode }) {
   return (
@@ -210,6 +211,8 @@ export function NodeDetailPage({ nodeId }: { nodeId: string }) {
               );
             })}
           </Section>
+
+          <HardwareSection nodeId={nodeId} temps={host.temps ?? []} />
         </>
       )}
 

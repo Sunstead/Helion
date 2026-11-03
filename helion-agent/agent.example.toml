@@ -166,6 +166,15 @@ interval_ms = 10000
 # How long to watch for a machine to come up before calling the wake failed.
 wake_timeout_secs = 180
 
+[hardware]
+# Drive health from a file the host writes hourly with smartctl (Jupiter's
+# scripts/helion-disk-health.sh). The agent never touches the drives: that
+# needs root on the host. Temperatures need no setup; they come from
+# /sys/class/hwmon whenever the agent can see it.
+disk_health = false
+disk_health_file = "/host/disk-health/disk-health.json"
+expected_interval_secs = 3600
+
 [events]
 # The Events page: container crashes and health, backups, disk space, admin
 # actions and wakes, and the problems open now. Kept in [state] path.

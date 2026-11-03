@@ -61,9 +61,10 @@ fn resolve(key: &str, title: &str, detail: Option<String>) -> Report {
 
 /// "Free space: 12G free, need 50G", one per failed step.
 fn failed_steps(s: &BackupsStatus) -> Vec<String> {
-    let steps: [(&str, &Option<StepStatus>); 4] = [
+    let steps: [(&str, &Option<StepStatus>); 5] = [
         ("Database dumps", &s.postgres_dump),
         ("Copy to second disk", &s.state_copy),
+        ("Offsite copy", &s.offsite_copy),
         ("Free space", &s.space_check),
         ("Heartbeat", &s.heartbeat),
     ];
@@ -90,15 +91,21 @@ impl BackupTracker {
         }
         let took = s.duration_secs.map(human_duration);
 
+        let steps = failed_steps(s);
         match s.last_exit_code {
             Some(code) if code != 0 => {
-                let steps = failed_steps(s);
                 let detail = if steps.is_empty() {
                     format!("The backup job exited with code {code}.")
                 } else {
                     steps.join(". ") + "."
                 };
                 out.push(Report::Open(spec(FAILED, "failed", s, format!("Backup failed (exit {code})"), detail)));
+            }
+            // The job finished, but a step of it didn't: the copy to the
+            // second disk or offsite. The snapshot is fine; a copy isn't.
+            Some(_) if !steps.is_empty() => {
+                let title = if steps.len() == 1 { "A backup step failed" } else { "Backup steps failed" };
+                out.push(Report::Open(spec(FAILED, "failed", s, title.into(), steps.join(". ") + ".")));
             }
             Some(_) => {
                 if is_open(open, FAILED) {
@@ -252,6 +259,8 @@ mod tests {
             retention: None,
             postgres_dump: Some(StepStatus { ok: true, at: None, message: None }),
             state_copy: Some(StepStatus { ok: true, at: None, message: None }),
+            offsite_copy: None,
+            offsite_label: None,
             space_check: Some(StepStatus { ok: true, at: None, message: Some("187G free".into()) }),
             heartbeat: None,
             requests: vec![],
@@ -322,6 +331,16 @@ mod tests {
             acked_by: None,
             acked_at: None,
         }
+    }
+
+    #[test]
+    fn a_failed_step_in_a_run_that_exited_0_is_still_a_problem() {
+        let mut s = status(Some(0), NOW);
+        s.offsite_copy = Some(StepStatus { ok: false, at: None, message: Some("pluto unreachable".into()) });
+        let out = BackupTracker::default().observe(&s, &[], NOW);
+        let [Report::Open(p)] = out.as_slice() else { panic!("{out:?}") };
+        assert_eq!(p.title, "A backup step failed");
+        assert_eq!(p.detail.as_deref(), Some("Offsite copy: pluto unreachable."));
     }
 
     #[test]

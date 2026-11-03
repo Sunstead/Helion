@@ -19,6 +19,12 @@ export const SETUP = {
     file: 'agent.toml',
     snippet: '[events]\nenabled = true\n\n[state]\npath = "/var/lib/helion-agent/state.db"',
   },
+  offsite: {
+    summary:
+      'Copy the repository off this machine after the nightly backup (restic copy to another node or a cloud bucket), then report it to the status script.',
+    file: 'backup job environment',
+    snippet: 'HELION_OFFSITE_OK=1   # or 0, with HELION_OFFSITE_MSG\nHELION_OFFSITE_LABEL=pluto',
+  },
   backups: {
     summary: 'Enable backups on the agent, then call helion-backup-status.sh at the end of your backup job.',
     file: 'agent.toml',

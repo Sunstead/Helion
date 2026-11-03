@@ -135,6 +135,10 @@ pub struct Capabilities {
     /// Absent from agents before 0.16.
     #[serde(default)]
     pub event_logs: bool,
+    /// `/v1/hardware/disks`: S.M.A.R.T. from the host's status file. Absent
+    /// from agents before 0.17.
+    #[serde(default)]
+    pub disk_health: bool,
 }
 
 impl Capabilities {
@@ -168,6 +172,7 @@ impl Capabilities {
             expected_services: false,
             alert_actions: false,
             event_logs: false,
+            disk_health: false,
         }
     }
 }

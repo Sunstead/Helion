@@ -21,6 +21,7 @@ pub mod backups;
 pub mod containers;
 pub mod db;
 pub mod disks;
+pub mod hardware;
 pub mod lifecycle;
 pub mod metrics;
 

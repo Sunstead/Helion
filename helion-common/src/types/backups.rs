@@ -190,6 +190,17 @@ pub struct BackupsStatus {
     #[serde(default)]
     #[ts(optional = nullable)]
     pub state_copy: Option<StepStatus>,
+    /// The copy that leaves the machine (`restic copy` to another node or
+    /// offsite). Null until the host's script makes one: the app says no
+    /// copy leaves the machine. Absent from agents before 0.17.
+    #[serde(default)]
+    #[ts(optional = nullable)]
+    pub offsite_copy: Option<StepStatus>,
+    /// Where the offsite copy goes, for display. Never a path or a URL with
+    /// credentials. Absent from agents before 0.17.
+    #[serde(default)]
+    #[ts(optional = nullable)]
+    pub offsite_label: Option<String>,
     /// Whether the repository's filesystem had room for tonight's backup; the
     /// message says how much was free. Absent from agents before 0.5.
     #[serde(default)]
