@@ -10,6 +10,7 @@ import { cn } from '@/lib/utils';
 import { Button } from '@sunstead/ui/components/button';
 import { EventItem, ProblemItem } from './event-item';
 import { Hint } from './hint';
+import { ActiveSilences } from './active-silences';
 
 const RECENT = 5;
 
@@ -35,9 +36,11 @@ export function EventsBell() {
 
   if (Object.keys(byNode).length === 0) return null;
 
-  const worst = problems[0]?.severity;
-  const label = problems.length
-    ? `${problems.length} open ${problems.length === 1 ? 'problem' : 'problems'}`
+  // Acknowledged ones are listed but not counted: someone is on them.
+  const waiting = problems.filter((p) => !p.acked_by);
+  const worst = waiting[0]?.severity;
+  const label = waiting.length
+    ? `${waiting.length} open ${waiting.length === 1 ? 'problem' : 'problems'}`
     : 'No open problems';
 
   return (
@@ -47,7 +50,7 @@ export function EventsBell() {
           render={
             <Button
               variant='ghost'
-              size={problems.length > 0 ? 'default' : 'icon'}
+              size={waiting.length > 0 ? 'default' : 'icon'}
               aria-label={label}
               className={cn(
                 'relative text-xs tabular-nums',
@@ -61,7 +64,7 @@ export function EventsBell() {
           }
         >
           <Bell />
-          {problems.length > 0 && problems.length}
+          {waiting.length > 0 && waiting.length}
           {unseen && (
             <span
               data-unseen
@@ -73,6 +76,7 @@ export function EventsBell() {
       </Hint>
       <PopoverContent align='end' className='w-96 gap-0 p-0'>
         <div className='max-h-[60vh] divide-y overflow-y-auto'>
+          <ActiveSilences className='m-2 rounded-md' />
           <h2 className='label-hud px-4 py-2 text-2xs text-muted-foreground'>
             Open problems
           </h2>

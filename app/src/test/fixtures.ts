@@ -74,6 +74,8 @@ export function agentInfo(partial: Partial<AgentInfo> = {}): AgentInfo {
       peers: true,
       container_history: true,
       expected_services: true,
+      alert_actions: true,
+      event_logs: true,
     },
     ...partial,
   };
@@ -204,5 +206,5 @@ export function problem(partial: Partial<Problem> = {}): Problem {
 }
 
 export function eventsResponse(partial: Partial<EventsResponse> = {}): EventsResponse {
-  return { events: [], problems: [], latest_id: 0, more: false, ...partial };
+  return { events: [], problems: [], latest_id: 0, more: false, silences: [], ...partial };
 }

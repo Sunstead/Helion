@@ -147,6 +147,26 @@ const MIGRATIONS: &[&str] = &[
         stopped_by   TEXT,
         stopped_at   INTEGER
     );",
+    // 0.16: acknowledging a problem stops its notifications; a silence holds
+    // a node's or a service's back for a while.
+    "ALTER TABLE problems ADD COLUMN acked_by TEXT;
+    ALTER TABLE problems ADD COLUMN acked_at INTEGER;
+    CREATE TABLE silences (
+        id         INTEGER PRIMARY KEY,
+        scope      TEXT    NOT NULL,
+        target     TEXT,
+        until      INTEGER,
+        reason     TEXT,
+        created_by TEXT    NOT NULL,
+        created_at INTEGER NOT NULL
+    );",
+    // 0.16: a crashed container's last lines, kept with the event. Deleted
+    // with it.
+    "CREATE TABLE event_logs (
+        event_id    INTEGER PRIMARY KEY,
+        captured_at INTEGER NOT NULL,
+        lines       TEXT    NOT NULL
+    );",
 ];
 
 #[derive(Clone)]

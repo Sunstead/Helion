@@ -21,6 +21,7 @@ import { getPlatform, isDesktop } from '@/lib/platform';
 import { AppUpdateSettings } from '@/components/app-update-settings';
 import { ServerOff } from 'lucide-react';
 import { DeviceNotifications, NotificationChannels } from '@/components/notify-settings';
+import { ActiveSilences } from '@/components/active-silences';
 import { ThemeSettings } from '@/components/theme-picker';
 
 const CAPS = [
@@ -172,6 +173,7 @@ export function SettingsPage() {
       </Section>
 
       <DeviceNotifications />
+      <ActiveSilences />
       {notifyNodes.length > 0 && <NotificationChannels nodeIds={notifyNodes} />}
 
       <Section title='Appearance' data-appearance>

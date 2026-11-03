@@ -474,6 +474,8 @@ mod tests {
             opened_at: 0,
             event_id: 1,
             depends_on: None,
+            acked_by: None,
+            acked_at: None,
         }
     }
 

@@ -127,6 +127,14 @@ pub struct Capabilities {
     /// one that disappears is reported. Absent from agents before 0.15.
     #[serde(default)]
     pub expected_services: bool,
+    /// Acknowledging problems and silencing notifications: `events` plus
+    /// `allow_actions`. Absent from agents before 0.16.
+    #[serde(default)]
+    pub alert_actions: bool,
+    /// `/v1/events/:id/logs`: a crash's last lines kept with its event.
+    /// Absent from agents before 0.16.
+    #[serde(default)]
+    pub event_logs: bool,
 }
 
 impl Capabilities {
@@ -158,6 +166,8 @@ impl Capabilities {
             peers: false,
             container_history: false,
             expected_services: false,
+            alert_actions: false,
+            event_logs: false,
         }
     }
 }

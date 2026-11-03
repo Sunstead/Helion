@@ -16,6 +16,7 @@ import {
 import { Event } from '@/generated/Event';
 import { EventCategory } from '@/generated/EventCategory';
 import { Problem } from '@/generated/Problem';
+import { Silence } from '@/generated/Silence';
 import { NodeEvents } from '@/stores/events';
 import { DeviceLevel } from '@/stores/notifications';
 import { AlertTone } from './device-alert';
@@ -74,12 +75,48 @@ export function mergeEvents(byNode: Record<string, NodeEvents>): EventRow[] {
     .sort((a, b) => b.at - a.at || b.id - a.id);
 }
 
-/** Every node's open problems, errors first, then oldest first. */
+/**
+ * Every node's open problems: unacknowledged first, then errors first, then
+ * oldest first. Someone is already on an acknowledged one.
+ */
 export function mergeProblems(byNode: Record<string, NodeEvents>): ProblemRow[] {
   const rank = { error: 0, warning: 1, info: 2 };
   return Object.entries(byNode)
     .flatMap(([nodeId, n]) => n.problems.map((p) => ({ ...p, nodeId })))
-    .sort((a, b) => rank[a.severity] - rank[b.severity] || a.opened_at - b.opened_at);
+    .sort(
+      (a, b) =>
+        Number(!!a.acked_by) - Number(!!b.acked_by) ||
+        rank[a.severity] - rank[b.severity] ||
+        a.opened_at - b.opened_at,
+    );
+}
+
+export type SilenceRow = Silence & { nodeId: string };
+
+/** Every node's silences in force at `now`, soonest to end first. */
+export function mergeSilences(byNode: Record<string, NodeEvents>, now = Date.now() / 1000): SilenceRow[] {
+  return Object.entries(byNode)
+    .flatMap(([nodeId, n]) => (n.silences ?? []).map((s) => ({ ...s, nodeId })))
+    .filter((s) => s.until === null || s.until > now)
+    .sort((a, b) => (a.until ?? Infinity) - (b.until ?? Infinity));
+}
+
+/** Whether a silence covers events about `service`. */
+export function silenceCovers(s: Silence, service: string | null, now: number): boolean {
+  if (s.until !== null && s.until <= now) return false;
+  return s.scope === 'node' || (service !== null && s.target === service);
+}
+
+/**
+ * The agent's rule for this device too: nothing about an acknowledged
+ * problem except its recovery, and nothing a silence covers.
+ */
+export function quieted(e: Event, problems: Problem[], silences: Silence[], now = Date.now() / 1000): boolean {
+  if (silences.some((s) => silenceCovers(s, e.service, now))) return true;
+  if (e.problem?.state === 'opened') {
+    return problems.some((p) => p.key === e.problem!.key && !!p.acked_by);
+  }
+  return false;
 }
 
 /** "Today", "Yesterday", or "Mon 22 Sep", for grouping a timeline by day. */

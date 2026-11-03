@@ -4,6 +4,9 @@ import { categoryOf, clockTime, EventRow, eventTone, EventTone, ProblemRow } fro
 import { relativeTime } from '@/lib/time';
 import { cn } from '@/lib/utils';
 import { NodeName } from './node-name';
+import { ProblemMenu } from './problem-menu';
+import { CrashLines } from './crash-lines';
+import { useNodeStore } from '@/stores/nodes';
 
 const TONE: Record<EventTone, string> = {
   error: 'bg-error/10 text-error',
@@ -29,6 +32,8 @@ export const EventItem = memo(function EventItem({
 }) {
   const tone = eventTone(event);
   const Icon = tone === 'resolved' ? CircleCheck : categoryOf(event.category).icon;
+  const crash = event.kind === 'crashed' || event.kind === 'oom_killed';
+  const keepsLogs = useNodeStore((s) => crash && !!s.meta[event.nodeId]?.capabilities.event_logs);
   return (
     <div data-event className='flex items-start gap-3 px-4 py-2.5'>
       <div className={cn('mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-md', TONE[tone])}>
@@ -44,6 +49,7 @@ export const EventItem = memo(function EventItem({
             {showNode && <NodeName nodeId={event.nodeId} />}
           </p>
         )}
+        {keepsLogs && <CrashLines nodeId={event.nodeId} eventId={event.id} />}
       </div>
       <time
         dateTime={new Date(event.at * 1000).toISOString()}
@@ -65,22 +71,29 @@ export const ProblemItem = memo(function ProblemItem({
   showNode: boolean;
 }) {
   const Icon = categoryOf(problem.category).icon;
+  const acked = !!problem.acked_by;
   return (
-    <div data-problem className='flex items-start gap-3 px-4 py-2.5'>
+    <div data-problem data-acked={acked || undefined} className='flex items-start gap-3 px-4 py-2.5'>
       <div
         className={cn(
           'mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-md',
-          TONE[problem.severity],
+          acked ? 'bg-muted text-muted-foreground' : TONE[problem.severity],
         )}
       >
         <Icon className='size-3.5' />
       </div>
       <div className='min-w-0 flex-1'>
-        <p className='text-sm wrap-anywhere'>{problem.title}</p>
+        <p className={cn('text-sm wrap-anywhere', acked && 'text-muted-foreground')}>{problem.title}</p>
         {problem.detail && <p className='text-xs text-muted-foreground'>{problem.detail}</p>}
         {problem.depends_on && (
           <p className='text-xs text-muted-foreground'>
             Goes through {problem.depends_on}: no alert of its own while {problem.depends_on} is unreachable.
+          </p>
+        )}
+        {acked && (
+          <p className='text-xs text-muted-foreground'>
+            Acknowledged by {problem.acked_by}
+            {problem.acked_at ? ` ${ago(problem.acked_at)}` : ''}. No more notifications until it clears.
           </p>
         )}
         {showNode && (
@@ -90,6 +103,7 @@ export const ProblemItem = memo(function ProblemItem({
         )}
       </div>
       <span className='shrink-0 text-xs text-muted-foreground'>opened {ago(problem.opened_at)}</span>
+      <ProblemMenu problem={problem} />
     </div>
   );
 });

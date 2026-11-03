@@ -93,6 +93,8 @@ impl AppState {
             peers: self.peers.is_some(),
             container_history: self.history.as_ref().is_some_and(|h| h.keeps_containers()),
             expected_services: self.services.is_some(),
+            alert_actions: self.events.is_some() && self.cfg.allow_actions,
+            event_logs: self.events.is_some() && self.cfg.docker.allow_logs,
         }
     }
 }

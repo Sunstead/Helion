@@ -77,24 +77,26 @@ pub async fn tail(
         return Err(AgentError::NotEnabled("container logs"));
     }
     let docker = state.docker.require()?;
-    let tail = q.tail.min(MAX_TAIL);
+    let lines = read_tail(&docker, &id, q.tail.min(MAX_TAIL), q.since).await.map_err(|e|
+        from_docker("logs", &id, e)
+    )?;
+    Ok(Json(LogsResponse { id, lines }))
+}
 
-    let mut stream = docker.logs(
-        &id,
-        Some(DockerHandle::logs_options(tail.to_string(), q.since, false))
-    );
-
+/// A container's last `tail` lines (since `since`, unix seconds; 0 for all
+/// Docker kept). Also how the event log keeps a crash's last lines.
+pub(crate) async fn read_tail(
+    docker: &Docker,
+    id: &str,
+    tail: u32,
+    since: i64
+) -> Result<Vec<LogLine>, bollard::errors::Error> {
+    let mut stream = docker.logs(id, Some(DockerHandle::logs_options(tail.to_string(), since, false)));
     let mut lines = Vec::with_capacity(tail as usize);
     while let Some(chunk) = stream.next().await {
-        match chunk {
-            Ok(output) => lines.extend(parse_output(&output)),
-            Err(e) => {
-                return Err(from_docker("logs", &id, e));
-            }
-        }
+        lines.extend(parse_output(&chunk?));
     }
-
-    Ok(Json(LogsResponse { id, lines }))
+    Ok(lines)
 }
 
 pub async fn follow(

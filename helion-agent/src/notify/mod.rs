@@ -14,6 +14,7 @@
 pub mod db;
 pub mod rules;
 pub mod send;
+pub mod silence;
 
 use crate::{ error::AgentError, events::EventsHandle, peers::PeersHandle, sample::host::unix_now, store::Store };
 use helion_common::types::{
@@ -241,6 +242,7 @@ pub fn spawn(store: Store, events: &EventsHandle, node: String, peers: Option<Pe
         let (mut channels, mut link) = load(&store).await;
         let mut guard = FloodGuard::default();
         let mut holds = PeerHolds::default();
+        let mut mutes = silence::Mutes::default();
         let explains = |peer: &str| peers.as_ref().is_some_and(|p| p.explains(peer, unix_now()));
         let mut statuses: HashMap<i64, ChannelStatus> = HashMap::new();
         let mut tick = tokio::time::interval(Duration::from_secs(60));
@@ -268,6 +270,12 @@ pub fn spawn(store: Store, events: &EventsHandle, node: String, peers: Option<Pe
                         }
                         Err(broadcast::error::RecvError::Closed) => return,
                     };
+                    // Acknowledged and silenced first: someone asked not to
+                    // hear about it.
+                    let now = unix_now();
+                    if !mutes.check(&event, &events.open_problems(), &events.active_silences(now), now) {
+                        continue;
+                    }
                     // A problem that goes through an unreachable peer waits:
                     // the peer's own problem says it.
                     let depends_on = event.problem.as_ref().and_then(|p| {
@@ -276,7 +284,6 @@ pub fn spawn(store: Store, events: &EventsHandle, node: String, peers: Option<Pe
                     if holds.hold(&event, depends_on.as_deref(), explains) || holds.cleared(&event) {
                         continue;
                     }
-                    let now = unix_now();
                     for ch in &channels {
                         if rules::wants(ch, &event) && guard.allow(ch.id, &event, now) {
                             deliver(ch, (*event).clone(), link.clone());
@@ -308,7 +315,14 @@ pub fn spawn(store: Store, events: &EventsHandle, node: String, peers: Option<Pe
                 _ = tick.tick() => {
                     let open = events.open_problems();
                     let now = unix_now();
-                    for event in holds.release(|key| open.iter().any(|p| p.key == key), explains) {
+                    let silences = events.active_silences(now);
+                    let released = holds.release(|key| open.iter().any(|p| p.key == key), explains);
+                    let late: Vec<Event> = mutes
+                        .release(&open, &silences, now)
+                        .into_iter()
+                        .chain(released.into_iter().filter(|e| mutes.check(e, &open, &silences, now)))
+                        .collect();
+                    for event in late {
                         for ch in &channels {
                             if rules::wants(ch, &event) && guard.allow(ch.id, &event, now) {
                                 deliver(ch, event.clone(), link.clone());
@@ -316,7 +330,7 @@ pub fn spawn(store: Store, events: &EventsHandle, node: String, peers: Option<Pe
                         }
                     }
                     let due = guard.due(now, |key| open.iter().any(|p| p.key == key));
-                    for (id, event) in due {
+                    for (id, event) in due.into_iter().filter(|(_, e)| mutes.check(e, &open, &silences, now)) {
                         if let Some(ch) = channels.iter().find(|c| c.id == id && rules::wants(c, &event)) {
                             deliver(ch, event, link.clone());
                         }

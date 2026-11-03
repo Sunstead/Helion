@@ -2,14 +2,29 @@
 
 use super::{ NewEvent, ProblemSpec, Resolution };
 use crate::error::AgentError;
-use helion_common::types::{ Event, EventCategory, Problem, ProblemRef, ProblemState, Severity };
+use helion_common::types::{
+    Event,
+    EventCategory,
+    Problem,
+    ProblemRef,
+    ProblemState,
+    Severity,
+    EventLogs,
+    LogLine,
+    Silence,
+    SilenceScope,
+};
 use rusqlite::{ params, Connection, OptionalExtension, Row };
 
 const EVENT_COLUMNS: &str =
     "id, at, category, kind, severity, subject, title, detail, actor, service, problem_key, problem_state";
 
+/// What a new problem is written with; `acked_*` start empty.
 const PROBLEM_COLUMNS: &str =
     "key, category, kind, severity, subject, title, detail, service, opened_at, event_id, depends_on";
+
+const PROBLEM_READ: &str =
+    "key, category, kind, severity, subject, title, detail, service, opened_at, event_id, depends_on, acked_by, acked_at";
 
 /// `None` for a row this build doesn't understand (written by a newer agent
 /// that was then rolled back), which is skipped rather than failing the page.
@@ -59,6 +74,8 @@ fn row_to_problem(r: &Row) -> rusqlite::Result<Option<Problem>> {
             opened_at: r.get(8)?,
             event_id: r.get(9)?,
             depends_on: r.get(10)?,
+            acked_by: r.get(11)?,
+            acked_at: r.get(12)?,
         })
     )
 }
@@ -133,6 +150,8 @@ pub fn open(conn: &Connection, at: i64, p: &ProblemSpec) -> Result<(Event, Probl
         opened_at: at,
         event_id: event.id,
         depends_on: p.depends_on.clone(),
+        acked_by: None,
+        acked_at: None,
     };
     Ok((event, problem))
 }
@@ -150,6 +169,7 @@ pub fn resolve(conn: &Connection, at: i64, problem: &Problem, r: &Resolution) ->
         detail: r.detail.clone(),
         actor: None,
         service: problem.service.clone(),
+        logs_of: None,
     };
     let event = insert(&tx, at, &e, Some((&problem.key, ProblemState::Resolved))).map_err(AgentError::internal)?;
     tx.execute("DELETE FROM problems WHERE key = ?1", [&problem.key]).map_err(AgentError::internal)?;
@@ -159,7 +179,7 @@ pub fn resolve(conn: &Connection, at: i64, problem: &Problem, r: &Resolution) ->
 
 pub fn problems(conn: &Connection) -> Result<Vec<Problem>, AgentError> {
     let mut stmt = conn
-        .prepare_cached(&format!("SELECT {PROBLEM_COLUMNS} FROM problems ORDER BY opened_at, key"))
+        .prepare_cached(&format!("SELECT {PROBLEM_READ} FROM problems ORDER BY opened_at, key"))
         .map_err(AgentError::internal)?;
     let rows = stmt.query_map([], row_to_problem).map_err(AgentError::internal)?;
     let rows: Vec<Option<Problem>> = rows.collect::<rusqlite::Result<_>>().map_err(AgentError::internal)?;
@@ -194,6 +214,96 @@ pub fn page(
     Ok((events.into_iter().flatten().collect(), more))
 }
 
+/// Acknowledges an open problem, or clears its acknowledgement with `None`.
+pub fn ack(conn: &Connection, key: &str, by: Option<&str>, at: i64) -> Result<(), AgentError> {
+    conn.execute(
+        "UPDATE problems SET acked_by = ?2, acked_at = ?3 WHERE key = ?1",
+        params![key, by, by.map(|_| at)]
+    ).map_err(AgentError::internal)?;
+    Ok(())
+}
+
+const SILENCE_COLUMNS: &str = "id, scope, target, until, reason, created_by, created_at";
+
+/// Silences in force at `now`.
+pub fn silences(conn: &Connection, now: i64) -> Result<Vec<Silence>, AgentError> {
+    let mut stmt = conn
+        .prepare_cached(
+            &format!("SELECT {SILENCE_COLUMNS} FROM silences WHERE until IS NULL OR until > ?1 ORDER BY created_at, id")
+        )
+        .map_err(AgentError::internal)?;
+    let rows = stmt
+        .query_map([now], |r| {
+            let scope: String = r.get(1)?;
+            let Some(scope) = SilenceScope::parse(&scope) else {
+                return Ok(None);
+            };
+            Ok(
+                Some(Silence {
+                    id: r.get(0)?,
+                    scope,
+                    target: r.get(2)?,
+                    until: r.get(3)?,
+                    reason: r.get(4)?,
+                    created_by: r.get(5)?,
+                    created_at: r.get(6)?,
+                })
+            )
+        })
+        .map_err(AgentError::internal)?;
+    let rows: Vec<Option<Silence>> = rows.collect::<rusqlite::Result<_>>().map_err(AgentError::internal)?;
+    Ok(rows.into_iter().flatten().collect())
+}
+
+pub fn add_silence(conn: &Connection, s: &Silence) -> Result<i64, AgentError> {
+    conn.execute(
+        "INSERT INTO silences (scope, target, until, reason, created_by, created_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+        params![s.scope.as_str(), s.target, s.until, s.reason, s.created_by, s.created_at]
+    ).map_err(AgentError::internal)?;
+    Ok(conn.last_insert_rowid())
+}
+
+/// Ends a silence now. Kept as a row until pruned, so it's still on record.
+pub fn end_silence(conn: &Connection, id: i64, now: i64) -> Result<bool, AgentError> {
+    let changed = conn
+        .execute(
+            "UPDATE silences SET until = ?2 WHERE id = ?1 AND (until IS NULL OR until > ?2)",
+            params![id, now]
+        )
+        .map_err(AgentError::internal)?;
+    Ok(changed > 0)
+}
+
+/// Deletes silences that ended before `before`.
+pub fn prune_silences(conn: &Connection, before: i64) -> Result<usize, AgentError> {
+    conn.execute("DELETE FROM silences WHERE until IS NOT NULL AND until < ?1", [before]).map_err(
+        AgentError::internal
+    )
+}
+
+/// Keeps a crashed container's last lines with its event.
+pub fn save_logs(conn: &Connection, event_id: i64, at: i64, lines: &[LogLine]) -> Result<(), AgentError> {
+    let json = serde_json::to_string(lines).map_err(AgentError::internal)?;
+    conn.execute(
+        "INSERT OR REPLACE INTO event_logs (event_id, captured_at, lines) VALUES (?1, ?2, ?3)",
+        params![event_id, at, json]
+    ).map_err(AgentError::internal)?;
+    Ok(())
+}
+
+pub fn logs(conn: &Connection, event_id: i64) -> Result<Option<EventLogs>, AgentError> {
+    let row: Option<(i64, String)> = conn
+        .query_row("SELECT captured_at, lines FROM event_logs WHERE event_id = ?1", [event_id], |r| {
+            Ok((r.get(0)?, r.get(1)?))
+        })
+        .optional()
+        .map_err(AgentError::internal)?;
+    row.map(|(captured_at, json)| {
+        let lines = serde_json::from_str(&json).map_err(AgentError::internal)?;
+        Ok(EventLogs { event_id, captured_at, lines })
+    }).transpose()
+}
+
 pub fn latest_id(conn: &Connection) -> Result<i64, AgentError> {
     conn.query_row("SELECT COALESCE(MAX(id), 0) FROM events", [], |r| r.get(0)).map_err(AgentError::internal)
 }
@@ -201,10 +311,13 @@ pub fn latest_id(conn: &Connection) -> Result<i64, AgentError> {
 /// Deletes events older than `before` (unix seconds), except any that opened
 /// a problem still open. Returns how many went.
 pub fn prune(conn: &Connection, before: i64) -> Result<usize, AgentError> {
-    conn.execute(
-        "DELETE FROM events WHERE at < ?1 AND id NOT IN (SELECT event_id FROM problems)",
-        [before]
-    ).map_err(AgentError::internal)
+    let deleted = conn
+        .execute("DELETE FROM events WHERE at < ?1 AND id NOT IN (SELECT event_id FROM problems)", [before])
+        .map_err(AgentError::internal)?;
+    conn.execute("DELETE FROM event_logs WHERE event_id NOT IN (SELECT id FROM events)", []).map_err(
+        AgentError::internal
+    )?;
+    Ok(deleted)
 }
 
 pub fn meta_get(conn: &Connection, key: &str) -> Result<Option<String>, AgentError> {
@@ -236,6 +349,7 @@ mod tests {
             detail: None,
             actor: None,
             service: Some("gitea".into()),
+            logs_of: None,
         }
     }
 
@@ -336,5 +450,39 @@ mod tests {
             meta_set(c, "version", "0.5.0").unwrap();
             assert_eq!(meta_get(c, "version").unwrap().as_deref(), Some("0.5.0"));
         });
+    }
+
+    #[test]
+    fn an_acknowledgement_is_stored_and_cleared() {
+        let store = Store::in_memory();
+        store.with(|c| open(c, 10, &spec("disk:/:disk_warning"))).unwrap();
+        store.with(|c| ack(c, "disk:/:disk_warning", Some("Pat"), 20)).unwrap();
+        let p = &store.with(problems).unwrap()[0];
+        assert_eq!((p.acked_by.as_deref(), p.acked_at), (Some("Pat"), Some(20)));
+        store.with(|c| ack(c, "disk:/:disk_warning", None, 30)).unwrap();
+        assert_eq!(store.with(problems).unwrap()[0].acked_by, None);
+    }
+
+    #[test]
+    fn silences_are_listed_while_in_force_and_ended_ones_pruned() {
+        let store = Store::in_memory();
+        let s = |scope, target: Option<&str>, until| Silence {
+            id: 0,
+            scope,
+            target: target.map(Into::into),
+            until,
+            reason: None,
+            created_by: "Pat".into(),
+            created_at: 0,
+        };
+        let forever = store.with(|c| add_silence(c, &s(SilenceScope::Node, None, None))).unwrap();
+        let hour = store.with(|c| add_silence(c, &s(SilenceScope::Service, Some("web"), Some(3_600)))).unwrap();
+        assert_eq!(store.with(|c| silences(c, 100)).unwrap().len(), 2);
+        assert_eq!(store.with(|c| silences(c, 3_600)).unwrap().len(), 1, "ended at its hour");
+
+        assert!(store.with(|c| end_silence(c, forever, 200)).unwrap());
+        assert!(!store.with(|c| end_silence(c, forever, 300)).unwrap(), "already ended");
+        assert_eq!(store.with(|c| silences(c, 300)).unwrap().iter().map(|s| s.id).collect::<Vec<_>>(), [hour]);
+        assert_eq!(store.with(|c| prune_silences(c, 4_000)).unwrap(), 2);
     }
 }

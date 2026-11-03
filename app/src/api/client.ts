@@ -8,7 +8,10 @@ import { EventsResponse } from '@/generated/EventsResponse';
 import { HostInfo } from '@/generated/HostInfo';
 import { LogsResponse } from '@/generated/LogsResponse';
 import { ContainerRank } from '@/generated/ContainerRank';
+import { EventLogs } from '@/generated/EventLogs';
 import { ExpectedServicesResponse } from '@/generated/ExpectedServicesResponse';
+import { Silence } from '@/generated/Silence';
+import { SilenceInput } from '@/generated/SilenceInput';
 import { ContainerSeries } from '@/generated/ContainerSeries';
 import { MetricSeries } from '@/generated/MetricSeries';
 import { MetricStep } from '@/generated/MetricStep';
@@ -87,6 +90,8 @@ export const LEGACY_CAPABILITIES: Capabilities = {
   peers: false,
   container_history: false,
   expected_services: false,
+  alert_actions: false,
+  event_logs: false,
 };
 
 /**
@@ -107,6 +112,7 @@ export function effectiveCapabilities(info: AgentInfo): Capabilities {
     uptime_actions: false,
     backup_actions: false,
     update_actions: false,
+    alert_actions: false,
   };
 }
 
@@ -249,6 +255,31 @@ export class AgentClient {
     if (opts.before !== undefined) params.set('before', String(opts.before));
     if (opts.limit !== undefined) params.set('limit', String(opts.limit));
     return this.request<EventsResponse>(`/v1/events?${params}`);
+  }
+
+  /** A crash's last lines, kept with its event. 404 when none were kept. */
+  getEventLogs(id: number): Promise<EventLogs> {
+    return this.request<EventLogs>(`/v1/events/${id}/logs`);
+  }
+
+  ackProblem(key: string): Promise<void> {
+    return this.request<void>(`/v1/problems/${encodeURIComponent(key)}/ack`, { method: 'POST' });
+  }
+
+  unackProblem(key: string): Promise<void> {
+    return this.request<void>(`/v1/problems/${encodeURIComponent(key)}/ack`, { method: 'DELETE' });
+  }
+
+  silence(input: SilenceInput): Promise<Silence> {
+    return this.request<Silence>('/v1/silences', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(input),
+    });
+  }
+
+  endSilence(id: number): Promise<void> {
+    return this.request<void>(`/v1/silences/${id}`, { method: 'DELETE' });
   }
 
   /** Admin only: notification channels (never their secrets) and settings. */
