@@ -54,6 +54,7 @@ pub struct Inner {
     pub updates: Option<UpdatesHandle>,
     pub peers: Option<PeersHandle>,
     pub services: Option<ServicesHandle>,
+    pub disk_health_rx: Option<watch::Receiver<Arc<crate::hardware::DiskHealthSnapshot>>>,
     pub icons: Option<IconsHandle>,
     /// Ends streams and log sockets when the agent stops.
     pub shutdown: Shutdown,
@@ -95,6 +96,7 @@ impl AppState {
             expected_services: self.services.is_some(),
             alert_actions: self.events.is_some() && self.cfg.allow_actions,
             event_logs: self.events.is_some() && self.cfg.docker.allow_logs,
+            disk_health: self.disk_health_rx.is_some(),
         }
     }
 }

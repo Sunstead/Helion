@@ -417,6 +417,7 @@ moving its folders is a planned migration, never an `mv`.
 | 2026-11-03 | Expected services are learned from what ran (10 minutes running), not declared or read from compose; Forget retires one. |
 | 2026-11-03 | Container history keeps 1m for 7 days and 5m for 30 days, keyed by container name. |
 | 2026-11-03 | Silencing is acknowledge plus ad-hoc silences per node or service; no recurring windows. |
+| 2026-11-03 | Drive health comes from a root timer on the host running smartctl into a file the agent reads, like backups; temperatures come from the agent's own hwmon view. A failed backup step (a copy, offsite or to the second disk) is a problem even when the job exits 0. |
 
 ### Open
 - **Starbook name:** Sunstead Kin (current favorite), Tether, Folk.

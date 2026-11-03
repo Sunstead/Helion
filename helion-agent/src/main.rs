@@ -12,6 +12,7 @@ mod config;
 mod docker;
 mod error;
 mod events;
+mod hardware;
 mod history;
 mod icons;
 mod labels;
@@ -136,6 +137,7 @@ async fn serve(cfg: Config, mode: config::AuthMode) -> Result<(), Box<dyn std::e
     };
 
     let docker = DockerHandle::new(cfg.docker.socket.clone());
+    let disk_health_rx = cfg.hardware.disk_health.then(|| hardware::spawn(&cfg.hardware));
 
     let host_rx = sample::spawn_host(&cfg, facts.clone(), history.clone());
     let icons = cfg.icons.enabled.then(|| {
@@ -237,6 +239,9 @@ async fn serve(cfg: Config, mode: config::AuthMode) -> Result<(), Box<dyn std::e
         if let Some(backups_rx) = &backups_rx {
             events::backups::spawn(events.clone(), backups_rx.clone());
         }
+        if let Some(health) = &disk_health_rx {
+            events::hardware::spawn(events.clone(), health.clone());
+        }
         events::metrics::spawn(events.clone(), host_rx.clone(), containers_rx.clone(), events::metrics::Limits {
             cpu_pct: cfg.events.cpu_warn_pct,
             memory_pct: cfg.events.memory_warn_pct,
@@ -323,6 +328,7 @@ async fn serve(cfg: Config, mode: config::AuthMode) -> Result<(), Box<dyn std::e
         updates,
         peers,
         services,
+        disk_health_rx,
         icons,
         shutdown: shutdown.clone(),
         cfg: cfg.clone(),

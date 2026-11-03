@@ -57,6 +57,10 @@ struct StatusFile {
     #[serde(default)]
     state_copy: Option<StepStatus>,
     #[serde(default)]
+    offsite_copy: Option<StepStatus>,
+    #[serde(default)]
+    offsite_label: Option<String>,
+    #[serde(default)]
     space_check: Option<StepStatus>,
     #[serde(default)]
     heartbeat: Option<StepStatus>,
@@ -184,6 +188,8 @@ impl BackupsProvider {
             retention: file.retention,
             postgres_dump: file.postgres_dump,
             state_copy: file.state_copy,
+            offsite_copy: file.offsite_copy,
+            offsite_label: file.offsite_label,
             space_check: file.space_check,
             heartbeat: file.heartbeat,
             requests: self.requests(),
@@ -210,6 +216,8 @@ impl BackupsProvider {
             retention: None,
             postgres_dump: None,
             state_copy: None,
+            offsite_copy: None,
+            offsite_label: None,
             space_check: None,
             heartbeat: None,
             requests: self.requests(),

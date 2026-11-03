@@ -251,6 +251,8 @@ mod tests {
             retention: None,
             postgres_dump: None,
             state_copy: None,
+            offsite_copy: None,
+            offsite_label: None,
             space_check: None,
             heartbeat: None,
             requests: vec![],

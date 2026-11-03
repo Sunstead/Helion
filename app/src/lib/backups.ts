@@ -21,6 +21,9 @@ export function backupHealth(s: BackupsStatus, now = Date.now()): BackupHealth {
     return now - fired >= INTERRUPTED_AFTER_MS ? 'interrupted' : 'running';
   }
   if (s.last_exit_code !== null && s.last_exit_code !== 0) return 'failed';
+  // A step can fail in a run that otherwise worked: a copy, not the snapshot.
+  const steps = [s.postgres_dump, s.state_copy, s.offsite_copy, s.space_check, s.heartbeat];
+  if (steps.some((step) => step && !step.ok)) return 'failed';
   if (s.stale) return 'stale';
   return 'healthy';
 }

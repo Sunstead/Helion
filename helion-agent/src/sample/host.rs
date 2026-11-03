@@ -2,9 +2,18 @@
 //! previous counters, so rate deltas are correct for any number of clients.
 
 use super::{ facts::HostFacts, filters::HostFilters };
-use helion_common::types::{ DiskInfo, DiskKind, HostInfo, NetInfo };
+use helion_common::types::{ DiskInfo, DiskKind, HostInfo, NetInfo, TempReading };
 use std::{ collections::HashMap, sync::Arc, time::Instant };
-use sysinfo::{ CpuRefreshKind, DiskRefreshKind, Disks, MemoryRefreshKind, Networks, RefreshKind, System };
+use sysinfo::{
+    Components,
+    CpuRefreshKind,
+    DiskRefreshKind,
+    Disks,
+    MemoryRefreshKind,
+    Networks,
+    RefreshKind,
+    System,
+};
 
 #[cfg(target_os = "linux")]
 use super::diskstats::DiskIo;
@@ -13,6 +22,29 @@ use super::diskstats::DiskIo;
 /// counters of devices we already know about, which is far cheaper than
 /// rebuilding the list.
 const REENUMERATE_EVERY: u64 = 60;
+/// Ticks between temperature reads.
+const TEMPS_EVERY: u64 = 10;
+
+/// Every sensor with a plausible reading, sorted by label. A sensor that
+/// reads nothing, or nonsense (a disconnected probe reads -128 or 255), is
+/// left out rather than shown.
+fn read_temps(components: &Components) -> Vec<TempReading> {
+    let mut temps: Vec<TempReading> = components
+        .list()
+        .iter()
+        .filter_map(|c| {
+            let celsius = c.temperature().filter(|t| (1.0..=150.0).contains(t))?;
+            Some(TempReading {
+                label: c.label().to_string(),
+                celsius,
+                critical: c.critical().filter(|t| (40.0..=150.0).contains(t)),
+            })
+        })
+        .collect();
+    temps.sort_by(|a, b| a.label.cmp(&b.label));
+    temps.dedup_by(|a, b| a.label == b.label);
+    temps
+}
 
 /// A single host sample, before static facts are attached.
 pub struct HostSample {
@@ -29,6 +61,7 @@ pub struct HostSample {
     pub net_tx_bps: f64,
     pub uptime_secs: u64,
     pub sampled_at: i64,
+    pub temps: Vec<TempReading>,
 }
 
 /// The figures the event log's pressure checks read, kept typed.
@@ -50,6 +83,7 @@ pub struct HostSnapshot {
     pub json: Arc<str>,
     pub disks: Arc<[DiskInfo]>,
     pub vitals: HostVitals,
+    pub temps: Arc<[TempReading]>,
 }
 
 impl HostSnapshot {
@@ -81,6 +115,7 @@ impl HostSnapshot {
             uptime_secs: sample.uptime_secs,
             sampled_at: sample.sampled_at,
             seq,
+            temps: sample.temps,
         };
 
         let json: Arc<str> = serde_json
@@ -100,7 +135,7 @@ impl HostSnapshot {
             swap_used: info.swap_used_bytes,
             swap_total: info.swap_total_bytes,
         };
-        Self { json, disks: sample.disk.into(), vitals }
+        Self { json, disks: sample.disk.into(), vitals, temps: info.temps.into() }
     }
 }
 
@@ -121,6 +156,9 @@ pub struct HostProbe {
     pools: HashMap<String, String>,
     prev_at: Instant,
     ticks: u64,
+    components: Components,
+    /// The last reading, kept between the ticks that refresh it.
+    temps: Vec<TempReading>,
 }
 
 impl HostProbe {
@@ -165,7 +203,10 @@ impl HostProbe {
             pools: HashMap::new(),
             prev_at: Instant::now(),
             ticks: 0,
+            components: Components::new_with_refreshed_list(),
+            temps: Vec::new(),
         };
+        probe.temps = read_temps(&probe.components);
         probe.seed_counters();
         probe
     }
@@ -206,6 +247,13 @@ impl HostProbe {
         self.io.refresh(reenumerate);
         self.nets.refresh(reenumerate);
 
+        // Sensors change slowly and reading every hwmon file each second
+        // would cost more than everything else here.
+        if self.ticks.is_multiple_of(TEMPS_EVERY) {
+            self.components.refresh(reenumerate);
+            self.temps = read_temps(&self.components);
+        }
+
         let (nets, net_rx_bps, net_tx_bps) = self.sample_nets(dt);
         let disk = self.sample_disks(dt);
 
@@ -229,6 +277,7 @@ impl HostProbe {
             net_tx_bps,
             uptime_secs: System::uptime(),
             sampled_at: unix_now(),
+            temps: self.temps.clone(),
         }
     }
 

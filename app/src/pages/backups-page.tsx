@@ -27,6 +27,7 @@ import { Section } from '@/components/section';
 import { EmptyState, NoNodesState } from '@/components/empty-state';
 import { NodeUnavailable } from '@/components/sign-in';
 import { SETUP } from '@/lib/setup';
+import { SetupHint } from '@/components/setup-hint';
 import { Alert, AlertDescription, AlertTitle } from '@sunstead/ui/components/alert';
 import { Badge } from '@sunstead/ui/components/badge';
 import { Skeleton } from '@sunstead/ui/components/skeleton';
@@ -85,7 +86,10 @@ function HealthAlert({ status }: { status: BackupsStatus }) {
       'Last backup did not finish',
       `Timer fired ${relativeTime(status.timer_last_fired)} but no status was written.`,
     ],
-    failed: ['Last backup failed', `Exited with code ${status.last_exit_code}.`],
+    failed:
+      status.last_exit_code !== 0
+        ? ['Last backup failed', `Exited with code ${status.last_exit_code}.`]
+        : ['A backup step failed', 'The snapshot was taken, but a step of the run failed. See Last run.'],
     stale: [
       'Backups are stale',
       lastRun ? `Last status ${lastRun}.` : 'No backup has reported yet.',
@@ -201,6 +205,19 @@ export function BackupsPage() {
             <Section title='Last run' contentClassName='divide-y'>
               <Step label='Database dumps' step={status.postgres_dump} />
               <Step label='Copy to second disk' step={status.state_copy} />
+              <Step
+                label={status.offsite_label ? `Offsite copy to ${status.offsite_label}` : 'Offsite copy'}
+                step={status.offsite_copy}
+              />
+              {status.offsite_copy === null && (
+                <div data-no-offsite className='flex items-center justify-between gap-2 px-4 py-2.5 text-sm'>
+                  <span>Offsite copy</span>
+                  <span className='flex items-center gap-1 text-xs text-muted-foreground'>
+                    No copy leaves this machine
+                    <SetupHint info={SETUP.offsite} label='How to add one' />
+                  </span>
+                </div>
+              )}
               <Step label='Free space' step={status.space_check} />
               <Step label='Heartbeat' step={status.heartbeat} />
               <div className='flex items-center justify-between px-4 py-2.5 text-sm'>

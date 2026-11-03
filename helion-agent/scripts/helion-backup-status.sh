@@ -30,7 +30,15 @@
 #   HELION_STATUS_FILE   where to write       (default $BACKUP_PATH/restic-status.json)
 #   HELION_TIMER_UNIT    timer to report on   (default jupiter-backup.timer)
 #   KEEP_DAILY / KEEP_WEEKLY / KEEP_MONTHLY   (default 7 / 4 / 6)
-#   HELION_PG_DUMP_OK / HELION_HEARTBEAT_OK   "1" or "0", optional
+#   HELION_PG_DUMP_OK / HELION_STATE_COPY_OK / HELION_SPACE_OK /
+#   HELION_HEARTBEAT_OK                       "1" or "0", optional
+#   HELION_STATE_COPY_MSG / HELION_SPACE_MSG  a message for that step, optional
+#   HELION_OFFSITE_OK / HELION_OFFSITE_MSG    the copy that leaves the machine
+#                                             (restic copy), once there is one;
+#                                             unset, Helion says none is made
+#   HELION_OFFSITE_LABEL  where it goes, for display ("pluto", "B2"); never a
+#                         path or a URL with credentials
+#   HELION_DATABASES     JSON: [{name, service, used_by}], for the restore guide
 #
 # Nothing secret is ever written to the output file.
 
@@ -100,15 +108,21 @@ if command -v systemctl >/dev/null 2>&1; then
 fi
 
 # --- optional step results -------------------------------------------------
-step_json() { # $1 = "1"/"0"/"" , $2 = label
+# jq rather than printf: a message can hold paths and quotes.
+step_json() { # $1 = "1"/"0"/"" , $2 = label, $3 = message (optional)
   case "${1:-}" in
-    1) printf '{"ok":true,"at":"%s","message":null}' "$NOW" ;;
-    0) printf '{"ok":false,"at":"%s","message":"%s failed"}' "$NOW" "$2" ;;
+    1) jq -nc --arg at "$NOW" --arg m "${3:-}" '{ok: true, at: $at, message: (if $m == "" then null else $m end)}' ;;
+    0) jq -nc --arg at "$NOW" --arg m "${3:-$2 failed}" '{ok: false, at: $at, message: $m}' ;;
     *) printf 'null' ;;
   esac
 }
 PG_DUMP="$(step_json "${HELION_PG_DUMP_OK:-}" "postgres dump")"
+STATE_COPY="$(step_json "${HELION_STATE_COPY_OK:-}" "state copy" "${HELION_STATE_COPY_MSG:-}")"
+SPACE_CHECK="$(step_json "${HELION_SPACE_OK:-}" "space check" "${HELION_SPACE_MSG:-}")"
 HEARTBEAT="$(step_json "${HELION_HEARTBEAT_OK:-}" "heartbeat push")"
+OFFSITE="$(step_json "${HELION_OFFSITE_OK:-}" "offsite copy" "${HELION_OFFSITE_MSG:-}")"
+DATABASES="${HELION_DATABASES:-[]}"
+printf '%s' "$DATABASES" | jq -e 'type == "array"' >/dev/null 2>&1 || DATABASES="[]"
 
 # --- emit ------------------------------------------------------------------
 # Written to a temp file in the same directory and renamed, so the agent — which
@@ -129,7 +143,12 @@ jq -n \
   --argjson weekly         "$KEEP_WEEKLY" \
   --argjson monthly        "$KEEP_MONTHLY" \
   --argjson pg_dump        "$PG_DUMP" \
+  --argjson state_copy     "$STATE_COPY" \
+  --argjson space_check    "$SPACE_CHECK" \
   --argjson heartbeat      "$HEARTBEAT" \
+  --argjson offsite        "$OFFSITE" \
+  --arg     offsite_label  "${HELION_OFFSITE_LABEL:-}" \
+  --argjson databases      "$DATABASES" \
   '{
      generated_at:   $generated_at,
      last_run:       $last_run,
@@ -140,7 +159,12 @@ jq -n \
      snapshots:      $snapshots,
      retention:      { daily: $daily, weekly: $weekly, monthly: $monthly },
      postgres_dump:  $pg_dump,
-     heartbeat:      $heartbeat
+     state_copy:     $state_copy,
+     space_check:    $space_check,
+     heartbeat:      $heartbeat,
+     offsite_copy:   $offsite,
+     offsite_label:  (if $offsite_label == "" then null else $offsite_label end),
+     databases:      $databases
    }' > "$TMP" || exit 1
 
 chmod 0644 "$TMP"

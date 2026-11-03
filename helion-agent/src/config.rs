@@ -48,6 +48,7 @@ pub struct Config {
     pub docker: DockerConfig,
     pub history: HistoryConfig,
     pub backups: BackupsConfig,
+    pub hardware: HardwareConfig,
     pub web: WebConfig,
     pub state: StateConfig,
     pub tailscale: TailscaleConfig,
@@ -329,6 +330,27 @@ pub struct HistoryConfig {
     pub containers: bool,
     pub retain_containers_1m_secs: i64,
     pub retain_containers_5m_secs: i64,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct HardwareConfig {
+    /// Drive health (S.M.A.R.T.) from a file the host writes. The agent
+    /// never reads the drives itself: that needs root on the host.
+    pub disk_health: bool,
+    pub disk_health_file: PathBuf,
+    /// How often the host writes it; three missed is stale.
+    pub expected_interval_secs: u64,
+}
+
+impl Default for HardwareConfig {
+    fn default() -> Self {
+        Self {
+            disk_health: false,
+            disk_health_file: PathBuf::from("/host/disk-health/disk-health.json"),
+            expected_interval_secs: 3_600,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Deserialize)]

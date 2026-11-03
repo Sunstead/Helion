@@ -7,6 +7,7 @@
 mod backups;
 mod containers;
 mod events;
+mod hardware;
 mod host;
 mod icons;
 pub(crate) mod logs;
@@ -83,6 +84,7 @@ pub fn router(state: AppState) -> Router {
         .route("/v1/notify", get(notify::get))
         .route("/v1/peers", get(peers::list))
         .route("/v1/services/expected", get(services::list))
+        .route("/v1/hardware/disks", get(hardware::disks))
         .route("/v1/tailnet", get(tailnet::current))
         .route("/v1/uptime", get(uptime::list))
         .route("/v1/updates", get(updates::list))

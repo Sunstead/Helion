@@ -9,7 +9,7 @@
 
 use super::{ human_bytes, EventsHandle, ProblemSpec, Report, Resolution };
 use crate::sample::{ docker::ContainerSnapshot, host::{ unix_now, HostSnapshot, HostVitals } };
-use helion_common::types::{ ContainerInfo, DiskInfo, EventCategory, Problem, Severity };
+use helion_common::types::{ ContainerInfo, DiskInfo, EventCategory, Problem, Severity, TempReading };
 use std::{ collections::{ HashMap, VecDeque }, sync::Arc, time::Duration };
 use tokio::sync::watch;
 
@@ -184,7 +184,13 @@ pub struct Pressure {
     host: HashMap<Metric, Window>,
     containers: HashMap<String, Window>,
     disks: HashMap<String, Forecast>,
+    temps: HashMap<String, Window>,
 }
+
+/// With no critical point from the hardware, a sensor this hot warns.
+const TEMP_WARN: f64 = 85.0;
+/// A warning clears this far below where it opened.
+const TEMP_HYSTERESIS: f64 = 5.0;
 
 fn pct(used: u64, total: u64) -> Option<f64> {
     (total > 0).then(|| (used as f64) * 100.0 / (total as f64))
@@ -215,6 +221,71 @@ impl Pressure {
                     Report::Resolve(Resolution {
                         key: p.key.clone(),
                         title: format!("{} is no longer forecast", p.subject),
+                        detail: None,
+                    })
+                );
+            }
+        }
+        out
+    }
+
+    /// Sensors running hot for 2 minutes: a warning 5 °C short of the
+    /// hardware's critical point (or at [`TEMP_WARN`] without one), an error at
+    /// it.
+    pub fn observe_temps(&mut self, temps: &[TempReading], open: &[Problem], now: i64) -> Vec<Report> {
+        let mut out = Vec::new();
+        for t in temps {
+            let window = self.temps.entry(t.label.clone()).or_default();
+            window.push(now, f64::from(t.celsius));
+            let critical = t.critical.map(f64::from);
+            let warn_at = critical.map_or(TEMP_WARN, |c| c - 5.0);
+            let levels = [
+                ("temp", Severity::Warning, Some(warn_at)),
+                ("temp_critical", Severity::Error, critical),
+            ];
+            for (kind, severity, at) in levels {
+                let Some(at) = at else {
+                    continue;
+                };
+                let key = format!("temp:{}:{kind}", t.label);
+                let is_open = open.iter().any(|p| p.key == key);
+                if !is_open {
+                    if let Some(avg) = window.mean(now, 2 * MIN).filter(|a| *a >= at) {
+                        out.push(
+                            Report::Open(ProblemSpec {
+                                key,
+                                category: EventCategory::Host,
+                                kind,
+                                severity,
+                                subject: t.label.clone(),
+                                title: format!("{} is at {avg:.0} °C", t.label),
+                                detail: Some(match critical {
+                                    Some(c) => format!("Its critical point is {c:.0} °C."),
+                                    None => "It has run this hot for 2 minutes.".to_string(),
+                                }),
+                                service: None,
+                                depends_on: None,
+                            })
+                        );
+                    }
+                } else if let Some(avg) = window.mean(now, 2 * MIN).filter(|a| *a < at - TEMP_HYSTERESIS) {
+                    out.push(
+                        Report::Resolve(Resolution {
+                            key,
+                            title: format!("{} is down to {avg:.0} °C", t.label),
+                            detail: None,
+                        })
+                    );
+                }
+            }
+        }
+        self.temps.retain(|label, _| temps.iter().any(|t| &t.label == label));
+        for p in open.iter().filter(|p| matches!(p.kind.as_str(), "temp" | "temp_critical")) {
+            if !temps.iter().any(|t| t.label == p.subject) {
+                out.push(
+                    Report::Resolve(Resolution {
+                        key: p.key.clone(),
+                        title: format!("{} no longer reports", p.subject),
                         detail: None,
                     })
                 );
@@ -291,7 +362,11 @@ impl Pressure {
             .iter()
             .map(|(_, l)| key(l.kind))
             .collect();
-        for p in open.iter().filter(|p| p.category == EventCategory::Host && !on.contains(&p.key)) {
+        let host_level = |p: &&Problem| matches!(p.kind.as_str(), "cpu" | "memory" | "memory_critical" | "swap");
+        for p in open
+            .iter()
+            .filter(host_level)
+            .filter(|p| p.category == EventCategory::Host && !on.contains(&p.key)) {
             out.push(
                 Report::Resolve(Resolution {
                     key: p.key.clone(),
@@ -438,13 +513,14 @@ pub fn spawn(
         tick.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
         loop {
             tick.tick().await;
-            let (vitals, disks) = {
+            let (vitals, disks, temps) = {
                 let h = host.borrow();
-                (h.vitals, h.disks.clone())
+                (h.vitals, h.disks.clone(), h.temps.clone())
             };
             let list = containers.borrow().containers.clone();
-            let reports = pressure.observe(vitals, &list, &disks, &events.open_problems(), limits, unix_now());
-            events.report_all(reports);
+            let (open, now) = (events.open_problems(), unix_now());
+            events.report_all(pressure.observe(vitals, &list, &disks, &open, limits, now));
+            events.report_all(pressure.observe_temps(&temps, &open, now));
         }
     });
 }
@@ -622,5 +698,48 @@ mod tests {
             out = p.observe(vitals(1.0, 10), &[], &[disk(500 * GB)], &open, LIMITS, t);
         }
         assert_eq!(keys(&out), ["resolve disk:/:disk_filling"]);
+    }
+
+    fn temp(label: &str, celsius: f32, critical: Option<f32>) -> TempReading {
+        TempReading { label: label.into(), celsius, critical }
+    }
+
+    #[test]
+    fn a_hot_sensor_warns_short_of_its_critical_point_and_errs_at_it() {
+        let mut p = Pressure::default();
+        let mut out = Vec::new();
+        for t in (0..=2 * MIN).step_by(15) {
+            out = p.observe_temps(&[temp("nvme Composite", 84.0, Some(85.0))], &[], t);
+        }
+        assert_eq!(keys(&out), ["open temp:nvme Composite:temp"], "80 opens the warning, 85 the error");
+
+        let mut p = Pressure::default();
+        for t in (0..=2 * MIN).step_by(15) {
+            out = p.observe_temps(&[temp("cpu", 84.0, None)], &[], t);
+        }
+        assert!(out.is_empty(), "85 without a critical point");
+    }
+
+    #[test]
+    fn a_sensor_clears_well_below_and_one_that_vanishes_resolves() {
+        let open = [problem("temp:cpu:temp", "temp", EventCategory::Host, "cpu")];
+        let mut p = Pressure::default();
+        let mut out = Vec::new();
+        for t in (0..=2 * MIN).step_by(15) {
+            out = p.observe_temps(&[temp("cpu", 82.0, None)], &open, t);
+        }
+        assert!(out.is_empty(), "not 5 below 85 yet");
+        for t in (2 * MIN + 15..=5 * MIN).step_by(15) {
+            out = p.observe_temps(&[temp("cpu", 60.0, None)], &open, t);
+        }
+        assert_eq!(keys(&out), ["resolve temp:cpu:temp"]);
+        assert_eq!(keys(&p.observe_temps(&[], &open, 400)), ["resolve temp:cpu:temp"]);
+    }
+
+    #[test]
+    fn temperature_problems_are_not_closed_by_the_host_levels() {
+        let open = [problem("temp:cpu:temp", "temp", EventCategory::Host, "cpu")];
+        let mut p = Pressure::default();
+        assert!(p.observe(vitals(1.0, 10), &[], &[], &open, LIMITS, 0).is_empty());
     }
 }

@@ -211,6 +211,23 @@ export function usePeers(nodeId: string | null) {
   });
 }
 
+/** S.M.A.R.T. from the host's file. It changes hourly, so this polls slowly. */
+export function useDiskHealth(nodeId: string | null) {
+  const meta = useNodeMeta(nodeId);
+  const supported = meta?.capabilities.disk_health ?? false;
+  return useQuery({
+    queryKey: ['disk-health', nodeId],
+    queryFn: () => {
+      const conn = getConnection(nodeId!);
+      if (!conn) throw new Error('node is not connected');
+      return conn.client.getDiskHealth();
+    },
+    enabled: !!nodeId && supported && meta?.status === 'online',
+    refetchInterval: 5 * 60_000,
+    retry: 1,
+  });
+}
+
 export function useBackups(nodeId: string | null) {
   const meta = useNodeMeta(nodeId);
   const supported = meta?.capabilities.backups ?? false;

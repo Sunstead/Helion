@@ -35,6 +35,7 @@ export function hostInfo(partial: Partial<HostInfo> = {}): HostInfo {
     uptime_secs: 3600,
     sampled_at: 1_700_000_000,
     seq: 1,
+    temps: [],
     ...partial,
   };
 }
@@ -76,6 +77,7 @@ export function agentInfo(partial: Partial<AgentInfo> = {}): AgentInfo {
       expected_services: true,
       alert_actions: true,
       event_logs: true,
+      disk_health: true,
     },
     ...partial,
   };
