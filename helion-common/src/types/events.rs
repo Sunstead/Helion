@@ -133,6 +133,84 @@ pub struct Problem {
     /// notifications: the peer's own problem says it. Absent before 0.11.
     #[serde(default)]
     pub depends_on: Option<String>,
+    /// Who acknowledged it. An acknowledged problem sends no more
+    /// notifications; its recovery still goes out. Absent before 0.16.
+    #[serde(default)]
+    #[ts(optional = nullable)]
+    pub acked_by: Option<String>,
+    #[serde(default)]
+    #[ts(optional = nullable, type = "number")]
+    pub acked_at: Option<i64>,
+}
+
+/// `GET /v1/events/:id/logs`: the last lines of a container that crashed,
+/// read just after. Never sent in a notification: logs can hold secrets.
+#[derive(Serialize, Deserialize, TS, Debug, Clone)]
+#[ts(export, export_to = "../../app/src/generated/")]
+pub struct EventLogs {
+    #[ts(type = "number")]
+    pub event_id: i64,
+    #[ts(type = "number")]
+    pub captured_at: i64,
+    pub lines: Vec<crate::types::LogLine>,
+}
+
+/// What a silence covers.
+#[derive(Serialize, Deserialize, TS, Debug, Clone, Copy, PartialEq, Eq)]
+#[ts(export, export_to = "../../app/src/generated/")]
+#[serde(rename_all = "snake_case")]
+pub enum SilenceScope {
+    /// Everything on this node.
+    Node,
+    /// Events whose service is `target`.
+    Service,
+}
+
+text_enum!(SilenceScope { Node => "node", Service => "service" });
+
+/// Notifications held back for a while, for planned work. Events are still
+/// logged; a problem still open when the silence ends is sent then.
+#[derive(Serialize, Deserialize, TS, Debug, Clone, PartialEq)]
+#[ts(export, export_to = "../../app/src/generated/")]
+pub struct Silence {
+    #[ts(type = "number")]
+    pub id: i64,
+    pub scope: SilenceScope,
+    /// The service, for a `service` silence.
+    pub target: Option<String>,
+    /// Unix seconds; `None` until someone ends it.
+    #[ts(type = "number | null")]
+    pub until: Option<i64>,
+    pub reason: Option<String>,
+    pub created_by: String,
+    #[ts(type = "number")]
+    pub created_at: i64,
+}
+
+impl Silence {
+    pub fn active(&self, now: i64) -> bool {
+        self.until.is_none_or(|u| u > now)
+    }
+
+    /// Whether this silence covers an event about `service`.
+    pub fn covers(&self, service: Option<&str>, now: i64) -> bool {
+        self.active(now) &&
+            (match self.scope {
+                SilenceScope::Node => true,
+                SilenceScope::Service => service.is_some() && self.target.as_deref() == service,
+            })
+    }
+}
+
+/// `POST /v1/silences`.
+#[derive(Serialize, Deserialize, TS, Debug, Clone)]
+#[ts(export, export_to = "../../app/src/generated/")]
+pub struct SilenceInput {
+    pub scope: SilenceScope,
+    pub target: Option<String>,
+    /// How long; `None` until someone ends it.
+    pub minutes: Option<u32>,
+    pub reason: Option<String>,
 }
 
 /// `GET /v1/events`.
@@ -153,6 +231,9 @@ pub struct EventsResponse {
     /// The page was cut at the limit: there are more events in the direction
     /// asked for.
     pub more: bool,
+    /// Silences in force now. Absent before 0.16.
+    #[serde(default)]
+    pub silences: Vec<Silence>,
 }
 
 #[cfg(test)]

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { alertsFor, categoryOf, dayLabel, mergeEvents, mergeProblems, wantedOnDevice } from './events';
+import { alertsFor, categoryOf, dayLabel, mergeSilences, quieted, mergeEvents, mergeProblems, wantedOnDevice } from './events';
 import { event, problem } from '@/test/fixtures';
 
 const resolved = event({ severity: 'warning', title: 'gitea is healthy again', problem: { key: 'k', state: 'resolved' } });
@@ -44,10 +44,11 @@ describe('alertsFor', () => {
 
 describe('merging nodes', () => {
   const byNode = {
-    a: { events: [event({ id: 2, at: 200 }), event({ id: 1, at: 100 })], problems: [problem({ opened_at: 5 })], hasOlder: false },
+    a: { events: [event({ id: 2, at: 200 }), event({ id: 1, at: 100 })], problems: [problem({ opened_at: 5 })], silences: [], hasOlder: false },
     b: {
       events: [event({ id: 7, at: 150 })],
       problems: [problem({ key: 'x', severity: 'error', opened_at: 9 })],
+      silences: [],
       hasOlder: false,
     },
   };
@@ -82,5 +83,45 @@ describe('categoryOf', () => {
   it('falls back for a category a newer agent sends', () => {
     expect(categoryOf('service').label).toBe('Service');
     expect(categoryOf('quantum' as never).label).toBe('quantum');
+  });
+});
+
+describe('acknowledgements and silences', () => {
+  const silence = (scope: 'node' | 'service', target: string | null, until: number | null) => ({
+    id: 1,
+    scope,
+    target,
+    until,
+    reason: null,
+    created_by: 'Pat',
+    created_at: 0,
+  });
+  const opened = event({ service: 'gitea', problem: { key: 'k', state: 'opened' } });
+  const recovered = event({ service: 'gitea', problem: { key: 'k', state: 'resolved' } });
+
+  it('quiets an acknowledged problem but not its recovery', () => {
+    const acked = [problem({ key: 'k', acked_by: 'Pat', acked_at: 1 })];
+    expect(quieted(opened, acked, [], 10)).toBe(true);
+    expect(quieted(recovered, acked, [], 10)).toBe(false);
+  });
+
+  it('quiets what a silence covers while it lasts', () => {
+    expect(quieted(opened, [], [silence('service', 'gitea', 100)], 10)).toBe(true);
+    expect(quieted(opened, [], [silence('service', 'immich', 100)], 10)).toBe(false);
+    expect(quieted(opened, [], [silence('node', null, 100)], 200)).toBe(false);
+  });
+
+  it('lists silences in force, soonest to end first', () => {
+    const byNode = {
+      a: { events: [], problems: [], hasOlder: false, silences: [silence('node', null, null), { ...silence('service', 'x', 50), id: 2 }, { ...silence('service', 'y', 5), id: 3 }] },
+    };
+    expect(mergeSilences(byNode, 10).map((s) => s.id)).toEqual([2, 1]);
+  });
+
+  it('puts acknowledged problems after the rest', () => {
+    const byNode = {
+      a: { events: [], silences: [], hasOlder: false, problems: [problem({ key: 'x', severity: 'error', acked_by: 'Pat' }), problem({ key: 'y', severity: 'warning' })] },
+    };
+    expect(mergeProblems(byNode).map((p) => p.key)).toEqual(['y', 'x']);
   });
 });

@@ -160,6 +160,7 @@ impl ContainerTracker {
                         NewEvent::new(EventCategory::Container, kind, Severity::Error, &e.name, title)
                             .detail(detail.clone())
                             .service(e.service.clone())
+                            .logs_of(&e.id)
                     )
                 );
 
@@ -434,6 +435,8 @@ mod tests {
             opened_at: 0,
             event_id: 1,
             depends_on: None,
+            acked_by: None,
+            acked_at: None,
         }
     }
 

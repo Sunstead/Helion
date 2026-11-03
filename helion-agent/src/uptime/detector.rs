@@ -187,6 +187,8 @@ mod tests {
             opened_at,
             event_id: 1,
             depends_on: None,
+            acked_by: None,
+            acked_at: None,
         }
     }
 

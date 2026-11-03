@@ -1,6 +1,6 @@
 use crate::{ error::AgentError, events::db, state::AppState };
-use axum::{ extract::{ Query, State }, Json };
-use helion_common::types::EventsResponse;
+use axum::{ extract::{ Path, Query, State }, Json };
+use helion_common::types::{ EventLogs, EventsResponse };
 use serde::Deserialize;
 
 const DEFAULT_LIMIT: usize = 100;
@@ -34,6 +34,20 @@ pub async fn list(
             problems: events.open_problems().to_vec(),
             latest_id,
             more,
+            silences: events.active_silences(crate::sample::host::unix_now()),
         })
     )
+}
+
+/// A crash's last lines, kept with its event. Logs are on the same terms as
+/// the live ones: off when `allow_logs` is.
+pub async fn logs(State(state): State<AppState>, Path(id): Path<i64>) -> Result<Json<EventLogs>, AgentError> {
+    let events = state.events.as_ref().ok_or(AgentError::NotEnabled("events"))?;
+    if !state.cfg.docker.allow_logs {
+        return Err(AgentError::NotEnabled("container logs"));
+    }
+    events.store
+        .call(move |c| db::logs(c, id)).await?
+        .map(Json)
+        .ok_or_else(|| AgentError::NotFound(format!("no lines were kept with event {id}")))
 }

@@ -178,7 +178,7 @@ async fn serve(cfg: Config, mode: config::AuthMode) -> Result<(), Box<dyn std::e
 
     let events = match (&store, cfg.events.enabled) {
         (Some(store), true) =>
-            match events::spawn(&cfg.events, store.clone()).await {
+            match events::spawn(&cfg.events, store.clone(), cfg.docker.allow_logs.then(|| docker.clone())).await {
                 Ok(handle) => Some(handle),
                 Err(e) => {
                     tracing::error!(error = %e, "could not start the event log");

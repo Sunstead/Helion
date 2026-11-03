@@ -1,7 +1,8 @@
 import { useEffect } from 'react';
 import { nodeDisplayName, onNewEvents, useNodeStore } from '@/stores/nodes';
 import { useNotificationPrefs } from '@/stores/notifications';
-import { alertsFor } from '@/lib/events';
+import { alertsFor, quieted } from '@/lib/events';
+import { useEventsStore } from '@/stores/events';
 import { deviceAlert } from '@/lib/device-alert';
 
 /**
@@ -15,7 +16,9 @@ export function NotificationWatcher() {
       onNewEvents((nodeId, events) => {
         const node = useNodeStore.getState().nodes.find((n) => n.id === nodeId);
         const level = useNotificationPrefs.getState().level;
-        for (const a of alertsFor(node ? nodeDisplayName(node) : nodeId, events, level, document.hasFocus())) {
+        const known = useEventsStore.getState().byNode[nodeId];
+        const wanted = known ? events.filter((e) => !quieted(e, known.problems, known.silences ?? [])) : events;
+        for (const a of alertsFor(node ? nodeDisplayName(node) : nodeId, wanted, level, document.hasFocus())) {
           void deviceAlert(a.title, a.body, a.tone);
         }
       }),

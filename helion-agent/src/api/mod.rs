@@ -9,11 +9,12 @@ mod containers;
 mod events;
 mod host;
 mod icons;
-mod logs;
+pub(crate) mod logs;
 mod meta;
 mod metrics;
 mod notify;
 mod peers;
+mod problems;
 mod services;
 mod tailnet;
 mod updates;
@@ -58,6 +59,9 @@ pub fn router(state: AppState) -> Router {
         .route("/v1/updates/rollback", post(updates::rollback))
         .route("/v1/updates/policy", put(updates::policy))
         .route("/v1/services/expected/:service", delete(services::forget))
+        .route("/v1/problems/:key/ack", post(problems::ack).delete(problems::unack))
+        .route("/v1/silences", post(problems::silence))
+        .route("/v1/silences/:id", delete(problems::end_silence))
         .layer(from_fn_with_state(state.clone(), auth::require_write));
 
     let read = Router::new()
@@ -74,6 +78,7 @@ pub fn router(state: AppState) -> Router {
         .route("/v1/volumes/stream", get(volumes::stream))
         .route("/v1/backups", get(backups::current))
         .route("/v1/events", get(events::list))
+        .route("/v1/events/:id/logs", get(events::logs))
         // Admin-only inside the handler, like the neighbours below.
         .route("/v1/notify", get(notify::get))
         .route("/v1/peers", get(peers::list))

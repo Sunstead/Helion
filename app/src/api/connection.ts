@@ -4,6 +4,7 @@ import { ContainerInfo } from '@/generated/ContainerInfo';
 import { ContainersResponse } from '@/generated/ContainersResponse';
 import { Event } from '@/generated/Event';
 import { Problem } from '@/generated/Problem';
+import { Silence } from '@/generated/Silence';
 import { HostInfo } from '@/generated/HostInfo';
 import { PrincipalInfo } from '@/generated/PrincipalInfo';
 import { AuthInfo } from '@/generated/AuthInfo';
@@ -48,6 +49,8 @@ export interface EventsUpdate {
   events: Event[];
   /** Every problem open now. */
   problems: Problem[];
+  /** Silences in force now. */
+  silences: Silence[];
   /**
    * The first load, or a reload after the log was reset: history, not news,
    * so nothing should notify for it.
@@ -499,6 +502,11 @@ export class NodeConnection {
     };
   }
 
+  /** Polls the event log now, after an edit, rather than at the next tick. */
+  refreshEvents(): Promise<void> {
+    return this.meta.capabilities.events ? this.pollEvents() : Promise.resolve();
+  }
+
   private startEvents() {
     if (!this.meta.capabilities.events) return;
     void this.pollEvents();
@@ -512,7 +520,13 @@ export class NodeConnection {
       if (this.lastEventId === null) {
         const r = await this.client.getEvents({ limit: EVENTS_FIRST_PAGE });
         this.lastEventId = r.latest_id;
-        this.publishEvents({ events: [...r.events].reverse(), problems: r.problems, initial: true, more: r.more });
+        this.publishEvents({
+          events: [...r.events].reverse(),
+          problems: r.problems,
+          silences: r.silences ?? [],
+          initial: true,
+          more: r.more,
+        });
         return;
       }
       const r = await this.client.getEvents({ after: this.lastEventId, limit: EVENTS_PAGE });
@@ -524,7 +538,7 @@ export class NodeConnection {
       }
       const newest = r.events.at(-1);
       if (newest) this.lastEventId = newest.id;
-      this.publishEvents({ events: r.events, problems: r.problems, initial: false, more: false });
+      this.publishEvents({ events: r.events, problems: r.problems, silences: r.silences ?? [], initial: false, more: false });
     } catch {
       /* events aren't worth changing node status over */
     } finally {

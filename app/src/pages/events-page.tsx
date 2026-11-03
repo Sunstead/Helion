@@ -16,6 +16,7 @@ import { EmptyState, NoNodesState } from '@/components/empty-state';
 import { TableSkeleton } from '@/components/skeletons';
 import { SETUP } from '@/lib/setup';
 import { EventItem, ProblemItem } from '@/components/event-item';
+import { ActiveSilences } from '@/components/active-silences';
 import { Button } from '@sunstead/ui/components/button';
 import { NodeSelect } from '@/components/node-select';
 import { ALL_NODES, useNodeScope } from '@/hooks/use-node-scope';
@@ -126,6 +127,7 @@ export function EventsPage() {
     }
     return (
       <>
+        <ActiveSilences />
         <Section title='Open problems' count={problems.length || undefined} contentClassName='divide-y'>
           {awaiting ? (
             <TableSkeleton columns={2} rows={2} />

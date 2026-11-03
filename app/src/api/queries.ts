@@ -4,6 +4,7 @@ import { toast } from 'sonner';
 import { HostInfo } from '@/generated/HostInfo';
 import { ContainerRank } from '@/generated/ContainerRank';
 import { ExpectedService } from '@/generated/ExpectedService';
+import { SilenceInput } from '@/generated/SilenceInput';
 import { MetricStep } from '@/generated/MetricStep';
 import { UpdatePolicy } from '@/generated/UpdatePolicy';
 import { UpdatesResponse } from '@/generated/UpdatesResponse';
@@ -16,6 +17,7 @@ import { WolNetwork } from '@/generated/WolNetwork';
 import { WolTargetInput } from '@/generated/WolTargetInput';
 import { getConnection, useNodeStore } from '@/stores/nodes';
 import { Device, mergeTailnets } from '@/lib/tailnet';
+import { AgentRequestError } from './client';
 import { NodeMeta } from './connection';
 import { NotifyChannelInput } from '@/generated/NotifyChannelInput';
 import { NotifySettings } from '@/generated/NotifySettings';
@@ -607,6 +609,54 @@ export function useForgetService() {
     },
     [client],
   );
+}
+
+/** Acknowledge problems and silence notifications, with toasts. */
+export function useAlertActions() {
+  const run = useCallback(
+    async (nodeId: string, what: string, fn: (c: NonNullable<ReturnType<typeof getConnection>>) => Promise<unknown>, done?: string) => {
+      const conn = getConnection(nodeId);
+      if (!conn) throw new Error('node is not connected');
+      try {
+        await fn(conn);
+        if (done) toast.success(done);
+      } catch (e) {
+        toast.error(`Could not ${what}`, { description: e instanceof Error ? e.message : undefined });
+        throw e;
+      } finally {
+        await conn.refreshEvents();
+      }
+    },
+    [],
+  );
+  return {
+    ack: (nodeId: string, key: string) => run(nodeId, 'acknowledge it', (c) => c.client.ackProblem(key)),
+    unack: (nodeId: string, key: string) => run(nodeId, 'clear the acknowledgement', (c) => c.client.unackProblem(key)),
+    silence: (nodeId: string, input: SilenceInput, label: string) =>
+      run(nodeId, `silence ${label}`, (c) => c.client.silence(input), `Silenced ${label}`),
+    endSilence: (nodeId: string, id: number) => run(nodeId, 'end the silence', (c) => c.client.endSilence(id)),
+  };
+}
+
+/** A crash's last lines, fetched when they're opened. `null` when none were kept. */
+export function useEventLogs(nodeId: string, eventId: number, enabled: boolean) {
+  return useQuery({
+    queryKey: ['event-logs', nodeId, eventId],
+    queryFn: async () => {
+      const conn = getConnection(nodeId);
+      if (!conn) throw new Error('node is not connected');
+      try {
+        return await conn.client.getEventLogs(eventId);
+      } catch (e) {
+        if (e instanceof AgentRequestError && e.status === 404) return null;
+        throw e;
+      }
+    },
+    enabled,
+    // Kept once, never changes.
+    staleTime: Infinity,
+    retry: false,
+  });
 }
 
 const UPTIME_POLL_MS = 30_000;
