@@ -103,7 +103,7 @@ pub struct HostInfo {
     #[ts(type = "number")]
     pub seq: u64,
     /// The host's temperature sensors, read every 10 s. Empty where the agent
-    /// can't see any (no `/sys/class/hwmon`), and from agents before 0.17.
+    /// can't see any (no `/sys/class/hwmon`), and from agents before 0.15.
     #[serde(default)]
     pub temps: Vec<TempReading>,
 }
