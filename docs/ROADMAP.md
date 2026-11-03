@@ -413,7 +413,7 @@ moving its folders is a planned migration, never an `mv`.
 | 2026-10-10 | Multi-node: a service on several nodes is one entry with a row per node; pages that show one node keep their own choice, and Monitoring and Logs have "All nodes". |
 | 2026-10-10 | ntfy moves to Pluto, public at `ntfy.example.com`, so the phone needs no tailnet and Jupiter going down can be reported. "Pluto down" goes from Jupiter to a secret ntfy.sh topic. |
 | 2026-10-10 | Agents are peers (0.11): heartbeats with a shared token (not Authentik, which lives on Jupiter), dialled by Pluto. Checks that go through a peer are folded into its one alert. |
-| 2026-11-03 | Blind spots, in three releases: 0.15 per-container history, missing services and pressure alerts; 0.16 acknowledge and silence, crash logs kept with the event; 0.17 temperatures, S.M.A.R.T. (a Jupiter host script) and offsite copy status. |
+| 2026-11-03 | Blind spots, in three pieces: per-container history, missing services and pressure alerts; acknowledge and silence, crash logs kept with the event; temperatures, S.M.A.R.T. (a Jupiter host script) and offsite copy status. All three shipped together as 0.15.0; the Cosmos-name cleanup moves to 0.16. |
 | 2026-11-03 | Expected services are learned from what ran (10 minutes running), not declared or read from compose; Forget retires one. |
 | 2026-11-03 | Container history keeps 1m for 7 days and 5m for 30 days, keyed by container name. |
 | 2026-11-03 | Silencing is acknowledge plus ad-hoc silences per node or service; no recurring windows. |

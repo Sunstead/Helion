@@ -134,7 +134,7 @@ pub struct Problem {
     #[serde(default)]
     pub depends_on: Option<String>,
     /// Who acknowledged it. An acknowledged problem sends no more
-    /// notifications; its recovery still goes out. Absent before 0.16.
+    /// notifications; its recovery still goes out. Absent before 0.15.
     #[serde(default)]
     #[ts(optional = nullable)]
     pub acked_by: Option<String>,
@@ -231,7 +231,7 @@ pub struct EventsResponse {
     /// The page was cut at the limit: there are more events in the direction
     /// asked for.
     pub more: bool,
-    /// Silences in force now. Absent before 0.16.
+    /// Silences in force now. Absent before 0.15.
     #[serde(default)]
     pub silences: Vec<Silence>,
 }

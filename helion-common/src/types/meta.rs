@@ -128,15 +128,15 @@ pub struct Capabilities {
     #[serde(default)]
     pub expected_services: bool,
     /// Acknowledging problems and silencing notifications: `events` plus
-    /// `allow_actions`. Absent from agents before 0.16.
+    /// `allow_actions`. Absent from agents before 0.15.
     #[serde(default)]
     pub alert_actions: bool,
     /// `/v1/events/:id/logs`: a crash's last lines kept with its event.
-    /// Absent from agents before 0.16.
+    /// Absent from agents before 0.15.
     #[serde(default)]
     pub event_logs: bool,
     /// `/v1/hardware/disks`: S.M.A.R.T. from the host's status file. Absent
-    /// from agents before 0.17.
+    /// from agents before 0.15.
     #[serde(default)]
     pub disk_health: bool,
 }
