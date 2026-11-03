@@ -34,7 +34,11 @@ export function ServiceIcon({ service, icon = null, size = 24, ...props }: Servi
   const fromAgent = useAgentIcon(isProduct(product) ? null : icon, scheme);
 
   if (isProduct(product)) {
-    return <ProductIcon product={product} size={size} {...props} />;
+    // Inline, because containers size bare SVGs by CSS, which beats the
+    // width and height attributes: a Button makes every svg in it 16px.
+    return (
+      <ProductIcon product={product} size={size} {...props} style={{ width: size, height: size, ...props.style }} />
+    );
   }
   if (fromAgent) {
     return (
@@ -50,5 +54,5 @@ export function ServiceIcon({ service, icon = null, size = 24, ...props }: Servi
     );
   }
 
-  return <Server size={size} className={props.className} />;
+  return <Server size={size} className={props.className} style={{ width: size, height: size, ...props.style }} />;
 }
