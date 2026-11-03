@@ -23,7 +23,7 @@ use helion_common::types::{
     VolumesResponse,
 };
 use futures_util::StreamExt;
-use std::{ collections::{ HashMap, HashSet }, sync::Arc };
+use std::{ collections::{ HashMap, HashSet }, sync::Arc, time::Instant };
 
 /// The serialized form for HTTP responses, plus the typed list for the
 /// consumers inside the agent: the all-containers log stream follows the
@@ -104,11 +104,58 @@ impl VolumeSnapshot {
     }
 }
 
+/// A container's absolute counters at one of our ticks. Rates are differenced
+/// against the previous one, never against Docker's `precpu_stats`, which
+/// `one_shot` zeroes.
 #[derive(Clone, Copy)]
-struct CpuSample {
-    total: u64,
-    system: u64,
+struct Counters {
+    at: Instant,
+    cpu_total: u64,
+    cpu_system: u64,
     cores: f64,
+    /// `None` when the container has no networks of its own.
+    net: Option<(u64, u64)>,
+    /// `None` when the cgroup reports no block IO counters.
+    blk: Option<(u64, u64)>,
+}
+
+/// What one tick's stats give a container.
+#[derive(Debug, Clone, Copy, Default, PartialEq)]
+struct Usage {
+    cpu_pct: f32,
+    mem_used: u64,
+    mem_limit: u64,
+    net: Option<(f64, f64)>,
+    blk: Option<(f64, f64)>,
+}
+
+/// Sums received and sent bytes over the container's networks.
+fn net_counters(s: &Stats) -> Option<(u64, u64)> {
+    let nets = s.networks.as_ref().filter(|n| !n.is_empty())?;
+    Some(nets.values().fold((0, 0), |(rx, tx), n| (rx + n.rx_bytes, tx + n.tx_bytes)))
+}
+
+/// Bytes read and written. cgroup v1 spells the ops `Read`/`Write`, v2
+/// `read`/`write`; v1 also lists a `Total` we must not add in.
+fn blk_counters(s: &Stats) -> Option<(u64, u64)> {
+    let entries = s.blkio_stats.io_service_bytes_recursive.as_ref().filter(|e| !e.is_empty())?;
+    Some(
+        entries.iter().fold((0, 0), |(r, w), e| {
+            if e.op.eq_ignore_ascii_case("read") {
+                (r + e.value, w)
+            } else if e.op.eq_ignore_ascii_case("write") {
+                (r, w + e.value)
+            } else {
+                (r, w)
+            }
+        })
+    )
+}
+
+/// A per-second rate from two readings of a counter. `None` when the counter
+/// went backwards (the container restarted) or no time passed.
+fn rate(now: u64, prev: u64, secs: f64) -> Option<f64> {
+    (now >= prev && secs > 0.0).then(|| ((now - prev) as f64) / secs)
 }
 
 struct StartedEntry {
@@ -118,7 +165,7 @@ struct StartedEntry {
 }
 
 pub struct DockerProbe {
-    prev_cpu: HashMap<String, CpuSample>,
+    prev: HashMap<String, Counters>,
     started: HashMap<String, StartedEntry>,
     concurrency: usize,
     icons: Option<IconsHandle>,
@@ -127,7 +174,7 @@ pub struct DockerProbe {
 impl DockerProbe {
     pub fn new(concurrency: usize) -> Self {
         Self {
-            prev_cpu: HashMap::new(),
+            prev: HashMap::new(),
             started: HashMap::new(),
             concurrency: concurrency.max(1),
             icons: None,
@@ -185,7 +232,7 @@ impl DockerProbe {
 
         // Drop bookkeeping for containers that no longer exist, so neither
         // map grows without bound on a host that churns containers.
-        self.prev_cpu.retain(|id, _| ids.contains(id));
+        self.prev.retain(|id, _| ids.contains(id));
         self.started.retain(|id, _| ids.contains(id));
 
         containers.sort_by(|a, b| a.name.cmp(&b.name));
@@ -209,9 +256,9 @@ impl DockerProbe {
         let state = c.state.unwrap_or_default();
         let labels = c.labels.unwrap_or_default();
 
-        let (cpu_pct, mem_used_bytes, mem_limit_bytes) = match stats.get(&id) {
-            Some(s) => self.usage_from(&id, s),
-            None => (0.0, 0, 0),
+        let usage = match stats.get(&id) {
+            Some(s) => self.usage_from(&id, s, Instant::now()),
+            None => Usage::default(),
         };
 
         let (started_at, restart_count) = self.started_at(docker, &id, &state).await;
@@ -267,30 +314,53 @@ impl DockerProbe {
             helion_service_description: crate::labels::label(&labels, "service.description"),
             helion_service_url: crate::labels::label(&labels, "service.url"),
             icon,
-            cpu_pct,
-            mem_used_bytes,
-            mem_limit_bytes,
+            cpu_pct: usage.cpu_pct,
+            mem_used_bytes: usage.mem_used,
+            mem_limit_bytes: usage.mem_limit,
+            net_rx_bps: usage.net.map(|(rx, _)| rx),
+            net_tx_bps: usage.net.map(|(_, tx)| tx),
+            blk_read_bps: usage.blk.map(|(r, _)| r),
+            blk_write_bps: usage.blk.map(|(_, w)| w),
         })
     }
 
-    fn usage_from(&mut self, id: &str, s: &Stats) -> (f32, u64, u64) {
-        let current = CpuSample {
-            total: s.cpu_stats.cpu_usage.total_usage,
-            system: s.cpu_stats.system_cpu_usage.unwrap_or(0),
+    fn usage_from(&mut self, id: &str, s: &Stats, at: Instant) -> Usage {
+        let current = Counters {
+            at,
+            cpu_total: s.cpu_stats.cpu_usage.total_usage,
+            cpu_system: s.cpu_stats.system_cpu_usage.unwrap_or(0),
             cores: s.cpu_stats.online_cpus.unwrap_or(1).max(1) as f64,
+            net: net_counters(s),
+            blk: blk_counters(s),
         };
 
-        let cpu_pct = match self.prev_cpu.get(id) {
-            Some(prev) if current.system > prev.system && current.total >= prev.total => {
-                let cpu_delta = (current.total - prev.total) as f64;
-                let system_delta = (current.system - prev.system) as f64;
+        let prev = self.prev.insert(id.to_string(), current);
+        let cpu_pct = match prev {
+            Some(prev) if
+                current.cpu_system > prev.cpu_system &&
+                current.cpu_total >= prev.cpu_total
+            => {
+                let cpu_delta = (current.cpu_total - prev.cpu_total) as f64;
+                let system_delta = (current.cpu_system - prev.cpu_system) as f64;
                 ((cpu_delta / system_delta) * current.cores * 100.0) as f32
             }
             // First sighting, or the counters went backwards (container
             // restarted). Correct from the next tick.
             _ => 0.0,
         };
-        self.prev_cpu.insert(id.to_string(), current);
+
+        // A container with networks reports 0 B/s on first sighting rather
+        // than nothing, so the field doesn't flicker between null and a value.
+        let secs = prev.map_or(0.0, |p| at.duration_since(p.at).as_secs_f64());
+        let pair = |now: Option<(u64, u64)>, before: Option<(u64, u64)>| {
+            let (a, b) = now?;
+            Some(match before {
+                Some((pa, pb)) => (rate(a, pa, secs).unwrap_or(0.0), rate(b, pb, secs).unwrap_or(0.0)),
+                None => (0.0, 0.0),
+            })
+        };
+        let net = pair(current.net, prev.and_then(|p| p.net));
+        let blk = pair(current.blk, prev.and_then(|p| p.blk));
 
         // Docker's raw `usage` includes page cache, which makes idle
         // containers look like they're holding hundreds of megabytes. The
@@ -302,7 +372,13 @@ impl DockerProbe {
             None => 0,
         };
 
-        (cpu_pct.max(0.0), usage.saturating_sub(cache), s.memory_stats.limit.unwrap_or(0))
+        Usage {
+            cpu_pct: cpu_pct.max(0.0),
+            mem_used: usage.saturating_sub(cache),
+            mem_limit: s.memory_stats.limit.unwrap_or(0),
+            net,
+            blk,
+        }
     }
 
     /// `started_at` changes only when a container transitions state, so the
@@ -434,6 +510,10 @@ mod tests {
                 cpu_pct: 0.0,
                 mem_used_bytes: 0,
                 mem_limit_bytes: 0,
+                net_rx_bps: None,
+                net_tx_bps: None,
+                blk_read_bps: None,
+                blk_write_bps: None,
             }])
         };
         let down = before.unavailable();
@@ -543,21 +623,23 @@ mod tests {
 
         // precpu_stats is zeroed under one_shot, so the first tick has nothing
         // to difference against. Reporting 0 beats reporting nonsense.
-        let (first, _, _) = probe.usage_from("abc", &stats_with(1_000, 10_000, 4));
+        let t = Instant::now();
+        let first = probe.usage_from("abc", &stats_with(1_000, 10_000, 4), t).cpu_pct;
         assert_eq!(first, 0.0);
 
         // 500 of 10_000 system ticks across 4 cores = 20%.
-        let (second, _, _) = probe.usage_from("abc", &stats_with(1_500, 20_000, 4));
+        let second = probe.usage_from("abc", &stats_with(1_500, 20_000, 4), t + SECS_2).cpu_pct;
         assert!((second - 20.0).abs() < 0.001, "expected 20%, got {second}");
     }
 
     #[test]
     fn cpu_resets_rather_than_spiking_when_counters_go_backwards() {
         let mut probe = DockerProbe::new(4);
-        probe.usage_from("abc", &stats_with(9_000, 20_000, 2));
+        let t = Instant::now();
+        probe.usage_from("abc", &stats_with(9_000, 20_000, 2), t);
         // Container restarted: total_usage drops. Must not underflow into a
         // huge percentage.
-        let (pct, _, _) = probe.usage_from("abc", &stats_with(10, 30_000, 2));
+        let pct = probe.usage_from("abc", &stats_with(10, 30_000, 2), t + SECS_2).cpu_pct;
         assert_eq!(pct, 0.0);
     }
 
@@ -583,8 +665,65 @@ mod tests {
             ).expect("v2 fixture"))
         );
 
-        let (_, mem, limit) = probe.usage_from("abc", &s);
-        assert_eq!(mem, 200_000_000, "500MB usage minus 300MB inactive file cache");
-        assert_eq!(limit, 2_000_000_000);
+        let u = probe.usage_from("abc", &s, Instant::now());
+        assert_eq!(u.mem_used, 200_000_000, "500MB usage minus 300MB inactive file cache");
+        assert_eq!(u.mem_limit, 2_000_000_000);
+    }
+
+    const SECS_2: std::time::Duration = std::time::Duration::from_secs(2);
+
+    /// Adds network and block IO counters to the fixture.
+    fn with_io(mut s: Stats, rx: u64, tx: u64, read: u64, write: u64) -> Stats {
+        s.networks = Some(
+            serde_json::from_value(
+                serde_json::json!({
+                "eth0": { "rx_bytes": rx - 100, "tx_bytes": tx, "rx_dropped": 0, "rx_errors": 0,
+                          "rx_packets": 0, "tx_dropped": 0, "tx_errors": 0, "tx_packets": 0 },
+                "eth1": { "rx_bytes": 100, "tx_bytes": 0, "rx_dropped": 0, "rx_errors": 0,
+                          "rx_packets": 0, "tx_dropped": 0, "tx_errors": 0, "tx_packets": 0 }
+            })
+            ).unwrap()
+        );
+        s.blkio_stats = serde_json::from_value(
+            serde_json::json!({
+            "io_service_bytes_recursive": [
+                { "major": 8, "minor": 0, "op": "Read", "value": read },
+                { "major": 8, "minor": 0, "op": "Write", "value": write },
+                { "major": 8, "minor": 0, "op": "Total", "value": read + write }
+            ]
+        })
+        ).unwrap();
+        s
+    }
+
+    #[test]
+    fn network_and_block_io_are_rates_summed_over_interfaces() {
+        let mut probe = DockerProbe::new(1);
+        let t = Instant::now();
+        let first = probe.usage_from("abc", &with_io(stats_with(1, 2, 1), 1_000, 0, 0, 0), t);
+        assert_eq!(first.net, Some((0.0, 0.0)), "a value from the start, not null");
+
+        let next = with_io(stats_with(1, 2, 1), 5_000, 2_000, 4_096, 8_192);
+        let u = probe.usage_from("abc", &next, t + SECS_2);
+        assert_eq!(u.net, Some((2_000.0, 1_000.0)), "both interfaces, per second");
+        // `Total` is not added to read and write.
+        assert_eq!(u.blk, Some((2_048.0, 4_096.0)));
+    }
+
+    #[test]
+    fn a_container_without_networks_reports_none() {
+        let mut probe = DockerProbe::new(1);
+        let u = probe.usage_from("abc", &stats_with(1, 2, 1), Instant::now());
+        assert_eq!((u.net, u.blk), (None, None));
+    }
+
+    #[test]
+    fn io_counters_going_backwards_read_as_zero() {
+        let mut probe = DockerProbe::new(1);
+        let t = Instant::now();
+        probe.usage_from("abc", &with_io(stats_with(1, 2, 1), 9_000, 9_000, 9_000, 9_000), t);
+        let u = probe.usage_from("abc", &with_io(stats_with(1, 2, 1), 200, 0, 0, 0), t + SECS_2);
+        assert_eq!(u.net, Some((0.0, 0.0)));
+        assert_eq!(u.blk, Some((0.0, 0.0)));
     }
 }

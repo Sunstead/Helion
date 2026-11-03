@@ -1,6 +1,7 @@
 import { useCallback, useMemo, useState } from 'react';
 import { Hexagon, SearchX } from 'lucide-react';
 import { ServiceCard } from '@/components/service-card';
+import { NotRunningServices } from '@/components/not-running-services';
 import { PageHeader } from '@/components/page-header';
 import { SearchInput } from '@/components/search-input';
 import { SegmentedControl } from '@/components/segmented-control';
@@ -82,6 +83,7 @@ export function ServicesPage() {
       />
 
       {nodeCount > 0 && <DockerDownNote />}
+      {nodeCount > 0 && <NotRunningServices showNode={nodeCount > 1} className='mb-4' />}
       {nodeCount === 0 ? (
         <NoNodesState />
       ) : services.length === 0 && awaiting ? (

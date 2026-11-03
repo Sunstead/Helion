@@ -18,6 +18,7 @@ mod labels;
 mod notify;
 mod peers;
 mod sample;
+mod services;
 mod shutdown;
 mod sse;
 mod state;
@@ -145,7 +146,7 @@ async fn serve(cfg: Config, mode: config::AuthMode) -> Result<(), Box<dyn std::e
             move || poke.containers_changed().notify_one()
         )
     });
-    let containers_rx = sample::spawn_containers(&cfg, docker.clone(), icons.clone());
+    let containers_rx = sample::spawn_containers(&cfg, docker.clone(), icons.clone(), history.clone());
     let volumes_rx = sample::spawn_volumes(docker.clone());
 
     sample::spawn_self_identification(docker.clone(), facts.hostname.clone());
@@ -236,6 +237,11 @@ async fn serve(cfg: Config, mode: config::AuthMode) -> Result<(), Box<dyn std::e
         if let Some(backups_rx) = &backups_rx {
             events::backups::spawn(events.clone(), backups_rx.clone());
         }
+        events::metrics::spawn(events.clone(), host_rx.clone(), containers_rx.clone(), events::metrics::Limits {
+            cpu_pct: cfg.events.cpu_warn_pct,
+            memory_pct: cfg.events.memory_warn_pct,
+            disk_full_days: cfg.events.disk_full_days,
+        });
     }
 
     let wol = match (&store, cfg.wol.enabled) {
@@ -262,6 +268,20 @@ async fn serve(cfg: Config, mode: config::AuthMode) -> Result<(), Box<dyn std::e
                 )
             ),
         _ => None,
+    };
+
+    // Learned from what runs, so it needs nothing configured; without the
+    // state database there is nowhere to remember it.
+    let services = match &store {
+        Some(store) =>
+            match services::spawn(store.clone(), events.clone(), containers_rx.clone()).await {
+                Ok(handle) => Some(handle),
+                Err(e) => {
+                    tracing::error!(error = %e, "could not start expected services");
+                    None
+                }
+            }
+        None => None,
     };
 
     let updates = match (&store, cfg.updates.enabled) {
@@ -302,6 +322,7 @@ async fn serve(cfg: Config, mode: config::AuthMode) -> Result<(), Box<dyn std::e
         uptime,
         updates,
         peers,
+        services,
         icons,
         shutdown: shutdown.clone(),
         cfg: cfg.clone(),

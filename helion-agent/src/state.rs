@@ -13,6 +13,7 @@ use crate::{
     events::EventsHandle,
     notify::NotifyHandle,
     peers::PeersHandle,
+    services::ServicesHandle,
     history::HistoryHandle,
     shutdown::Shutdown,
     sample::{
@@ -52,6 +53,7 @@ pub struct Inner {
     pub uptime: Option<UptimeHandle>,
     pub updates: Option<UpdatesHandle>,
     pub peers: Option<PeersHandle>,
+    pub services: Option<ServicesHandle>,
     pub icons: Option<IconsHandle>,
     /// Ends streams and log sockets when the agent stops.
     pub shutdown: Shutdown,
@@ -89,6 +91,8 @@ impl AppState {
             updates: self.updates.is_some(),
             update_actions: self.updates.as_ref().is_some_and(|u| u.can_apply) && self.cfg.allow_actions,
             peers: self.peers.is_some(),
+            container_history: self.history.as_ref().is_some_and(|h| h.keeps_containers()),
+            expected_services: self.services.is_some(),
         }
     }
 }

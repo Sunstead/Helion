@@ -1,6 +1,6 @@
 import { memo } from 'react';
 import { CircleCheck } from 'lucide-react';
-import { CATEGORY, clockTime, EventRow, eventTone, EventTone, ProblemRow } from '@/lib/events';
+import { categoryOf, clockTime, EventRow, eventTone, EventTone, ProblemRow } from '@/lib/events';
 import { relativeTime } from '@/lib/time';
 import { cn } from '@/lib/utils';
 import { NodeName } from './node-name';
@@ -28,7 +28,7 @@ export const EventItem = memo(function EventItem({
   relative?: boolean;
 }) {
   const tone = eventTone(event);
-  const Icon = tone === 'resolved' ? CircleCheck : CATEGORY[event.category].icon;
+  const Icon = tone === 'resolved' ? CircleCheck : categoryOf(event.category).icon;
   return (
     <div data-event className='flex items-start gap-3 px-4 py-2.5'>
       <div className={cn('mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-md', TONE[tone])}>
@@ -64,7 +64,7 @@ export const ProblemItem = memo(function ProblemItem({
   problem: ProblemRow;
   showNode: boolean;
 }) {
-  const Icon = CATEGORY[problem.category].icon;
+  const Icon = categoryOf(problem.category).icon;
   return (
     <div data-problem className='flex items-start gap-3 px-4 py-2.5'>
       <div

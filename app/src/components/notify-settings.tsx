@@ -17,7 +17,7 @@ import { Checkbox } from '@sunstead/ui/components/checkbox';
 import { useNotifyActions, useNotifyAll } from '@/api/queries';
 import { nodeDisplayName, useNodeName, useNodeStore } from '@/stores/nodes';
 import { DeviceLevel, useNotificationPrefs } from '@/stores/notifications';
-import { CATEGORY } from '@/lib/events';
+import { CATEGORY, categoryOf } from '@/lib/events';
 import { relativeTime } from '@/lib/time';
 import { isDesktop } from '@/lib/platform';
 import { ChannelKind } from '@/generated/ChannelKind';
@@ -87,7 +87,7 @@ export function DeviceNotifications() {
 
 function rulesSummary(c: NotifyChannel): string {
   const what = { info: 'Everything', warning: 'Warnings and errors', error: 'Errors only' }[c.min_severity];
-  const where = c.categories.length ? ` from ${c.categories.map((k) => CATEGORY[k].label.toLowerCase()).join(', ')}` : '';
+  const where = c.categories.length ? ` from ${c.categories.map((k) => categoryOf(k).label.toLowerCase()).join(', ')}` : '';
   return `${what}${where}${c.recoveries ? ', with recoveries' : ''}`;
 }
 
@@ -494,7 +494,7 @@ function ChannelForm({
                     checked={categories.includes(c)}
                     onCheckedChange={(v) => toggleCategory(c, v === true)}
                   />
-                  {CATEGORY[c].label}
+                  {categoryOf(c).label}
                 </label>
               ))}
             </div>

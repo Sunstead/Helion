@@ -6,11 +6,13 @@
 //! `!Sync` and awkward to hold across an `.await`, so nothing here is async;
 //! handlers call `query` from `spawn_blocking`.
 
+pub mod containers;
 pub mod rollup;
 pub mod schema;
 
 use crate::{ config::HistoryConfig, error::AgentError, sample::host::HostSample };
-use helion_common::types::{ MetricSeries, MetricStep };
+use containers::{ ContainerRow, Select };
+use helion_common::types::{ ContainerSeries, MetricSeries, MetricStep };
 use rusqlite::{ Connection, OpenFlags };
 use std::{
     sync::{ atomic::{ AtomicBool, Ordering }, mpsc, Arc, Mutex },
@@ -61,6 +63,9 @@ impl From<&HostSample> for Row {
 /// What the writer thread is sent.
 enum Msg {
     Row(Row),
+    /// One closed minute, every container in it. Written at once: it is
+    /// already the batch.
+    Containers(Vec<ContainerRow>),
     /// Write the batch now, then answer.
     Flush(mpsc::Sender<()>),
 }
@@ -70,6 +75,8 @@ pub struct HistoryHandle {
     tx: mpsc::SyncSender<Msg>,
     read: Arc<Mutex<Connection>>,
     warned: Arc<AtomicBool>,
+    /// Whether per-container history is kept (`[history] containers`).
+    containers: bool,
 }
 
 /// A likely cause for a failed open. SQLite only says "unable to open
@@ -113,6 +120,7 @@ impl HistoryHandle {
         // Bounded: if the writer ever wedges we drop samples rather than let
         // the queue grow without limit behind the live stream.
         let (tx, rx) = mpsc::sync_channel::<Msg>(512);
+        let containers = cfg.containers;
         let cfg = cfg.clone();
 
         std::thread::Builder
@@ -125,6 +133,7 @@ impl HistoryHandle {
             tx,
             read: Arc::new(Mutex::new(read)),
             warned: Arc::new(AtomicBool::new(false)),
+            containers,
         })
     }
 
@@ -138,6 +147,21 @@ impl HistoryHandle {
             }
         } else {
             self.warned.store(false, Ordering::Relaxed);
+        }
+    }
+
+    pub fn keeps_containers(&self) -> bool {
+        self.containers
+    }
+
+    /// Called from the container sampler once a minute. Never blocks, like
+    /// `push`.
+    pub fn push_containers(&self, rows: Vec<ContainerRow>) {
+        if !self.containers || rows.is_empty() {
+            return;
+        }
+        if self.tx.try_send(Msg::Containers(rows)).is_err() {
+            tracing::warn!("history writer backlogged; dropping a minute of container history");
         }
     }
 
@@ -169,6 +193,32 @@ impl HistoryHandle {
             AgentError::Unavailable("history database is unavailable".into())
         })?;
         read_series(&conn, from, to, step_secs).map_err(AgentError::internal)
+    }
+
+    pub fn query_containers(
+        &self,
+        from: i64,
+        to: i64,
+        step: MetricStep,
+        max_points: usize,
+        select: &Select
+    ) -> Result<ContainerSeries, AgentError> {
+        if !self.containers {
+            return Err(AgentError::NotEnabled("container history"));
+        }
+        if to <= from {
+            return Err(AgentError::BadRequest("`to` must be after `from`".into()));
+        }
+        let max_points = max_points.clamp(1, 20_000);
+        // No 1s tier for containers: a request for one gets minutes.
+        let step_secs = match resolve_step(step, to - from, max_points) {
+            1 | 60 => 60,
+            _ => 300,
+        };
+        let conn = self.read.lock().map_err(|_| {
+            AgentError::Unavailable("history database is unavailable".into())
+        })?;
+        containers::read(&conn, from, to, step_secs, select).map_err(AgentError::internal)
     }
 }
 
@@ -273,6 +323,10 @@ fn writer_loop(conn: &mut Connection, rx: mpsc::Receiver<Msg>, cfg: HistoryConfi
     const MAX_BATCH: usize = 60;
     /// Rows reach the writer within a second or so of their timestamp.
     const ROLLUP_LAG_SECS: i64 = 5;
+    /// A container minute is written only once the next one has started, a
+    /// sampler tick (2 s by default) after it closes, or later if Docker is
+    /// slow to answer.
+    const CONTAINER_ROLLUP_LAG_SECS: i64 = 90;
     let flush_every = Duration::from_secs(cfg.flush_interval_secs.max(1));
 
     let mut batch: Vec<Row> = Vec::with_capacity(MAX_BATCH);
@@ -283,6 +337,11 @@ fn writer_loop(conn: &mut Connection, rx: mpsc::Receiver<Msg>, cfg: HistoryConfi
     loop {
         match rx.recv_timeout(Duration::from_millis(500)) {
             Ok(Msg::Row(row)) => batch.push(row),
+            Ok(Msg::Containers(rows)) => {
+                if let Err(e) = containers::write(conn, &rows) {
+                    tracing::warn!(error = %e, rows = rows.len(), "failed to write container history");
+                }
+            }
             Ok(Msg::Flush(done)) => {
                 flush(conn, &mut batch);
                 last_flush = Instant::now();
@@ -319,19 +378,30 @@ fn writer_loop(conn: &mut Connection, rx: mpsc::Receiver<Msg>, cfg: HistoryConfi
             if let Err(e) = rollup::rollup_5m(conn, closed_by) {
                 tracing::warn!(error = %e, "5m rollup failed");
             }
+            if cfg.containers {
+                if let Err(e) = containers::rollup_5m(conn, now - CONTAINER_ROLLUP_LAG_SECS) {
+                    tracing::warn!(error = %e, "container 5m rollup failed");
+                }
+            }
         }
 
         if last_retain.elapsed() >= Duration::from_secs(3600) {
             last_retain = Instant::now();
-            match
-                rollup::retain(
-                    conn,
-                    now,
-                    cfg.retain_1s_secs,
-                    cfg.retain_1m_secs,
-                    cfg.retain_5m_secs
-                )
-            {
+            let trimmed = rollup
+                ::retain(conn, now, cfg.retain_1s_secs, cfg.retain_1m_secs, cfg.retain_5m_secs)
+                .and_then(|host| {
+                    // Kept when `containers` is off too, so turning it off
+                    // lets the old rows age out instead of staying forever.
+                    containers
+                        ::retain(
+                            conn,
+                            now,
+                            cfg.retain_containers_1m_secs,
+                            cfg.retain_containers_5m_secs
+                        )
+                        .map(|c| host + c)
+                });
+            match trimmed {
                 Ok(deleted) if deleted > 0 => {
                     tracing::debug!(deleted, "trimmed metrics history");
                     // Stop the -wal file creeping after a bulk delete.

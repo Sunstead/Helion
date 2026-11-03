@@ -30,6 +30,10 @@ pub enum EventCategory {
     Update,
     /// Other agents this one exchanges heartbeats with. Absent before 0.11.
     Peer,
+    /// A service that is expected to run and isn't. Absent before 0.15.
+    Service,
+    /// The host's own load: CPU, memory and swap pressure. Absent before 0.15.
+    Host,
 }
 
 #[derive(Serialize, Deserialize, TS, Debug, Clone, Copy, PartialEq, Eq)]
@@ -65,6 +69,8 @@ text_enum!(EventCategory {
     Uptime => "uptime",
     Update => "update",
     Peer => "peer",
+    Service => "service",
+    Host => "host",
 });
 text_enum!(ProblemState { Opened => "opened", Resolved => "resolved" });
 

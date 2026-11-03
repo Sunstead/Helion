@@ -72,6 +72,8 @@ export function agentInfo(partial: Partial<AgentInfo> = {}): AgentInfo {
       updates: true,
       update_actions: true,
       peers: true,
+      container_history: true,
+      expected_services: true,
     },
     ...partial,
   };

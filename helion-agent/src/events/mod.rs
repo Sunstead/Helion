@@ -22,6 +22,7 @@ pub mod containers;
 pub mod db;
 pub mod disks;
 pub mod lifecycle;
+pub mod metrics;
 
 use crate::{ config::EventsConfig, sample::host::unix_now, store::Store };
 use helion_common::types::{ Event, EventCategory, Problem, Severity };

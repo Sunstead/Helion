@@ -1,6 +1,6 @@
 import { memo, useState } from 'react';
 import { Link } from '@tanstack/react-router';
-import { Copy, Logs, MoreHorizontal, Play, RotateCcw, Square, Trash } from 'lucide-react';
+import { ChartLine, Copy, Logs, MoreHorizontal, Play, RotateCcw, Square, Trash } from 'lucide-react';
 import { ContainerRow } from './container-columns';
 import { useContainerActions, useNodeMeta } from '@/api/queries';
 import { copyText } from '@/lib/clipboard';
@@ -16,6 +16,7 @@ import {
 } from '@sunstead/ui/components/dropdown-menu';
 import { ConfirmDialog } from './confirm-dialog';
 import { ReadOnlyNote } from './read-only-note';
+import { ContainerHistorySheet } from './container-history-sheet';
 
 export const ContainerActionsCell = memo(function ContainerActionsCell({
   container,
@@ -25,6 +26,7 @@ export const ContainerActionsCell = memo(function ContainerActionsCell({
   const meta = useNodeMeta(container.nodeId);
   const { run, pending } = useContainerActions(container.nodeId);
   const [removing, setRemoving] = useState(false);
+  const [history, setHistory] = useState(false);
 
   const canAct = meta?.capabilities.container_actions ?? false;
   const running = container.state === 'running';
@@ -59,6 +61,11 @@ export const ContainerActionsCell = memo(function ContainerActionsCell({
           >
             <Logs /> View logs
           </DropdownMenuItem>
+          {meta?.capabilities.container_history && (
+            <DropdownMenuItem onClick={() => setHistory(true)}>
+              <ChartLine /> View history
+            </DropdownMenuItem>
+          )}
           <DropdownMenuItem
             onClick={() => void copyText(container.id, 'Container ID copied')}
           >
@@ -94,6 +101,15 @@ export const ContainerActionsCell = memo(function ContainerActionsCell({
           {!canAct && <ReadOnlyNote />}
         </DropdownMenuContent>
       </DropdownMenu>
+
+      {history && (
+        <ContainerHistorySheet
+          nodeId={container.nodeId}
+          name={container.name}
+          open={history}
+          onOpenChange={setHistory}
+        />
+      )}
 
       <ConfirmDialog
         open={removing}

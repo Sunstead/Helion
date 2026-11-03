@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { MetricSeries } from '@/generated/MetricSeries';
-import { mergeSeries } from './metric-series';
+import { ContainerSeries } from '@/generated/ContainerSeries';
+import { containerChartRows, containerRows, mergeSeries } from './metric-series';
 
 function series(step: number, ts: number[], cpu: number[]): MetricSeries {
   const zeros = ts.map(() => 0);
@@ -61,5 +62,34 @@ describe('mergeSeries', () => {
       'cpu_pct',
     );
     expect(rows).toEqual([{ ts: 300_000, jupiter: 10, pluto: 2 }]);
+  });
+});
+
+describe('container history', () => {
+  const nulls = [null, null];
+  const s: ContainerSeries = {
+    step_secs: 60,
+    from: 0,
+    to: 60,
+    ts: [0, 60],
+    containers: [
+      { name: 'web', service: 'web', cpu_pct: [10, 20], cpu_pct_max: [15, 40], mem_used_bytes: nulls, mem_used_bytes_max: nulls, net_rx_bps: nulls, net_tx_bps: nulls, disk_read_bps: nulls, disk_write_bps: nulls },
+      { name: 'db', service: null, cpu_pct: [null, 5], cpu_pct_max: [null, 5], mem_used_bytes: nulls, mem_used_bytes_max: nulls, net_rx_bps: nulls, net_tx_bps: nulls, disk_read_bps: nulls, disk_write_bps: nulls },
+    ],
+  };
+
+  it('puts every container on the shared axis, null where it did not run', () => {
+    expect(containerRows(s, 'cpu_pct')).toEqual([
+      { ts: 0, web: 10, db: null },
+      { ts: 60_000, web: 20, db: 5 },
+    ]);
+  });
+
+  it('gives one container its average and peak', () => {
+    expect(containerChartRows(s, 'web', 'cpu_pct', 'cpu_pct_max')).toEqual([
+      { ts: 0, value: 10, peak: 15 },
+      { ts: 60_000, value: 20, peak: 40 },
+    ]);
+    expect(containerChartRows(s, 'gone', 'cpu_pct')).toEqual([]);
   });
 });

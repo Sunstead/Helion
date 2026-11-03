@@ -14,6 +14,7 @@ mod meta;
 mod metrics;
 mod notify;
 mod peers;
+mod services;
 mod tailnet;
 mod updates;
 mod uptime;
@@ -56,6 +57,7 @@ pub fn router(state: AppState) -> Router {
         .route("/v1/updates/apply", post(updates::apply))
         .route("/v1/updates/rollback", post(updates::rollback))
         .route("/v1/updates/policy", put(updates::policy))
+        .route("/v1/services/expected/:service", delete(services::forget))
         .layer(from_fn_with_state(state.clone(), auth::require_write));
 
     let read = Router::new()
@@ -75,6 +77,7 @@ pub fn router(state: AppState) -> Router {
         // Admin-only inside the handler, like the neighbours below.
         .route("/v1/notify", get(notify::get))
         .route("/v1/peers", get(peers::list))
+        .route("/v1/services/expected", get(services::list))
         .route("/v1/tailnet", get(tailnet::current))
         .route("/v1/uptime", get(uptime::list))
         .route("/v1/updates", get(updates::list))
@@ -83,7 +86,11 @@ pub fn router(state: AppState) -> Router {
         .route("/v1/wol/neighbors", get(wol::neighbors))
         // Gzip only here. A history range can be tens of thousands of numbers;
         // compressing an SSE stream would break incremental delivery.
-        .route("/v1/metrics", get(metrics::range).layer(CompressionLayer::new().gzip(true)));
+        .route("/v1/metrics", get(metrics::range).layer(CompressionLayer::new().gzip(true)))
+        .route(
+            "/v1/metrics/containers",
+            get(metrics::containers).layer(CompressionLayer::new().gzip(true))
+        );
 
     // `/v1/info` is intentionally unauthenticated so the desktop app can tell
     // "nothing is listening" from "an agent is here and wants a token" before

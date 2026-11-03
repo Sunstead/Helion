@@ -31,14 +31,25 @@ pub struct HostSample {
     pub sampled_at: i64,
 }
 
+/// The figures the event log's pressure checks read, kept typed.
+#[derive(Debug, Clone, Copy, Default, PartialEq)]
+pub struct HostVitals {
+    pub cpu_pct: f32,
+    pub mem_used: u64,
+    pub mem_total: u64,
+    pub swap_used: u64,
+    pub swap_total: u64,
+}
+
 /// What subscribers receive.
 ///
 /// The JSON is rendered once per tick here rather than once per request per
-/// client, so the HTTP path never touches serde. The disks are also kept
-/// typed, for the event log's disk-space check.
+/// client, so the HTTP path never touches serde. The disks and vitals are
+/// also kept typed, for the event log's checks.
 pub struct HostSnapshot {
     pub json: Arc<str>,
     pub disks: Arc<[DiskInfo]>,
+    pub vitals: HostVitals,
 }
 
 impl HostSnapshot {
@@ -82,7 +93,14 @@ impl HostSnapshot {
             })
             .into();
 
-        Self { json, disks: sample.disk.into() }
+        let vitals = HostVitals {
+            cpu_pct: info.cpu_pct,
+            mem_used: info.mem_used_bytes,
+            mem_total: info.mem_total_bytes,
+            swap_used: info.swap_used_bytes,
+            swap_total: info.swap_total_bytes,
+        };
+        Self { json, disks: sample.disk.into(), vitals }
     }
 }
 

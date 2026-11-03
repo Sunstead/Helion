@@ -7,6 +7,9 @@ import { ContainersResponse } from '@/generated/ContainersResponse';
 import { EventsResponse } from '@/generated/EventsResponse';
 import { HostInfo } from '@/generated/HostInfo';
 import { LogsResponse } from '@/generated/LogsResponse';
+import { ContainerRank } from '@/generated/ContainerRank';
+import { ExpectedServicesResponse } from '@/generated/ExpectedServicesResponse';
+import { ContainerSeries } from '@/generated/ContainerSeries';
 import { MetricSeries } from '@/generated/MetricSeries';
 import { MetricStep } from '@/generated/MetricStep';
 import { NotifyChannel } from '@/generated/NotifyChannel';
@@ -82,6 +85,8 @@ export const LEGACY_CAPABILITIES: Capabilities = {
   updates: false,
   update_actions: false,
   peers: false,
+  container_history: false,
+  expected_services: false,
 };
 
 /**
@@ -204,6 +209,18 @@ export class AgentClient {
     return this.request<PeersResponse>('/v1/peers');
   }
 
+  getExpectedServices(): Promise<ExpectedServicesResponse> {
+    return this.request<ExpectedServicesResponse>('/v1/services/expected');
+  }
+
+  /** Stops expecting a service; it's learned again if it runs for a while. */
+  forgetExpectedService(service: string): Promise<ExpectedServicesResponse> {
+    return this.request<ExpectedServicesResponse>(
+      `/v1/services/expected/${encodeURIComponent(service)}`,
+      { method: 'DELETE' },
+    );
+  }
+
   /** An icon the agent holds (`ContainerInfo.icon`), as the SVG that reads on `theme`. */
   async getIcon(name: string, theme: 'dark' | 'light'): Promise<Blob> {
     const res = await fetch(`${this.baseUrl}/v1/icons/${encodeURIComponent(name)}?theme=${theme}`, {
@@ -256,6 +273,26 @@ export class AgentClient {
     if (opts.step) params.set('step', opts.step);
     if (opts.maxPoints) params.set('max_points', String(opts.maxPoints));
     return this.request<MetricSeries>(`/v1/metrics?${params}`);
+  }
+
+  /** Per-container history: the named containers, else the top `limit` by `top`. */
+  getContainerMetrics(opts: {
+    from: number;
+    to: number;
+    maxPoints?: number;
+    names?: string[];
+    top?: ContainerRank;
+    limit?: number;
+  }): Promise<ContainerSeries> {
+    const params = new URLSearchParams({
+      from: String(Math.floor(opts.from)),
+      to: String(Math.floor(opts.to)),
+    });
+    if (opts.maxPoints) params.set('max_points', String(opts.maxPoints));
+    if (opts.names?.length) params.set('names', opts.names.join(','));
+    if (opts.top) params.set('top', opts.top);
+    if (opts.limit) params.set('limit', String(opts.limit));
+    return this.request<ContainerSeries>(`/v1/metrics/containers?${params}`);
   }
 
   getLogs(id: string, opts: { tail?: number; since?: number } = {}): Promise<LogsResponse> {

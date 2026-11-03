@@ -91,6 +91,24 @@ pub struct ContainerInfo {
     /// 0 when the container has no memory limit set.
     #[ts(type = "number")]
     pub mem_limit_bytes: u64,
+    /// Bytes/second, summed over the container's networks and differenced
+    /// across agent ticks. `None` for a container with no networks of its own
+    /// (`network_mode: host` would report the host's traffic), and from agents
+    /// before 0.15.
+    #[serde(default)]
+    #[ts(optional = nullable)]
+    pub net_rx_bps: Option<f64>,
+    #[serde(default)]
+    #[ts(optional = nullable)]
+    pub net_tx_bps: Option<f64>,
+    /// Block IO bytes/second from the container's cgroup. `None` when the
+    /// cgroup reports no counters, and from agents before 0.15.
+    #[serde(default)]
+    #[ts(optional = nullable)]
+    pub blk_read_bps: Option<f64>,
+    #[serde(default)]
+    #[ts(optional = nullable)]
+    pub blk_write_bps: Option<f64>,
 }
 
 #[derive(Serialize, Deserialize, TS, Debug, Clone)]

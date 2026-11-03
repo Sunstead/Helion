@@ -54,3 +54,48 @@ pub struct MetricSeries {
     /// the line across rather than interpolate through.
     pub n: Vec<u32>,
 }
+
+/// What `top` ranks containers by in `/v1/metrics/containers`.
+#[derive(Serialize, Deserialize, TS, Debug, Clone, Copy, PartialEq, Eq)]
+#[ts(export, export_to = "../../app/src/generated/")]
+#[serde(rename_all = "snake_case")]
+pub enum ContainerRank {
+    Cpu,
+    Mem,
+}
+
+/// Per-container history, columnar like [`MetricSeries`] but with one shared
+/// time axis: every container's arrays have the length of `ts`, and `null`
+/// where it has no bucket (not running, or not yet created). That is the shape
+/// a multi-line chart wants, with no client-side merge.
+///
+/// Containers are keyed by name, which survives a Compose recreate; the ID
+/// does not. Only the 1m and 5m tiers exist: the live table covers the rest.
+#[derive(Serialize, Deserialize, TS, Debug, Clone)]
+#[ts(export, export_to = "../../app/src/generated/")]
+pub struct ContainerSeries {
+    pub step_secs: u32,
+    #[ts(type = "number")]
+    pub from: i64,
+    #[ts(type = "number")]
+    pub to: i64,
+    #[ts(type = "number[]")]
+    pub ts: Vec<i64>,
+    pub containers: Vec<ContainerHistory>,
+}
+
+#[derive(Serialize, Deserialize, TS, Debug, Clone)]
+#[ts(export, export_to = "../../app/src/generated/")]
+pub struct ContainerHistory {
+    pub name: String,
+    /// The `helion.service` it had when last seen.
+    pub service: Option<String>,
+    pub cpu_pct: Vec<Option<f64>>,
+    pub cpu_pct_max: Vec<Option<f64>>,
+    pub mem_used_bytes: Vec<Option<f64>>,
+    pub mem_used_bytes_max: Vec<Option<f64>>,
+    pub net_rx_bps: Vec<Option<f64>>,
+    pub net_tx_bps: Vec<Option<f64>>,
+    pub disk_read_bps: Vec<Option<f64>>,
+    pub disk_write_bps: Vec<Option<f64>>,
+}

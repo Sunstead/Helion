@@ -93,6 +93,14 @@ pub struct EventsConfig {
     /// clears 5 points below.
     pub disk_warn_pct: u8,
     pub disk_critical_pct: u8,
+    /// Host CPU averaging this for 10 minutes opens a warning. 0 turns it off.
+    pub cpu_warn_pct: u8,
+    /// Host memory this full for 5 minutes opens a warning (97% for 2, an
+    /// error). 0 turns it off.
+    pub memory_warn_pct: u8,
+    /// A disk that will be full within this many days at the rate it filled
+    /// over the last day opens a warning. 0 turns it off.
+    pub disk_full_days: u32,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -316,6 +324,11 @@ pub struct HistoryConfig {
     pub retain_1s_secs: i64,
     pub retain_1m_secs: i64,
     pub retain_5m_secs: i64,
+    /// Per-container history: one row per container per minute, rolled up
+    /// to 5 minutes. On by default with history.
+    pub containers: bool,
+    pub retain_containers_1m_secs: i64,
+    pub retain_containers_5m_secs: i64,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -406,6 +419,9 @@ impl Default for HistoryConfig {
             retain_1s_secs: 3_600, // 1 hour
             retain_1m_secs: 604_800, // 7 days
             retain_5m_secs: 7_776_000, // 90 days
+            containers: true,
+            retain_containers_1m_secs: 604_800, // 7 days
+            retain_containers_5m_secs: 2_592_000, // 30 days
         }
     }
 }
@@ -428,7 +444,15 @@ impl Default for WolConfig {
 
 impl Default for EventsConfig {
     fn default() -> Self {
-        Self { enabled: true, retain_days: 180, disk_warn_pct: 85, disk_critical_pct: 95 }
+        Self {
+            enabled: true,
+            retain_days: 180,
+            disk_warn_pct: 85,
+            disk_critical_pct: 95,
+            cpu_warn_pct: 90,
+            memory_warn_pct: 90,
+            disk_full_days: 7,
+        }
     }
 }
 
@@ -666,6 +690,14 @@ impl Config {
                     "events.disk_warn_pct must be at least 10 and below events.disk_critical_pct, which is at most 100".into()
                 )
             );
+        }
+        for (name, pct) in [("cpu_warn_pct", self.events.cpu_warn_pct), ("memory_warn_pct", self.events.memory_warn_pct)] {
+            if pct != 0 && !(50..=100).contains(&pct) {
+                return Err(ConfigError::Invalid(format!("events.{name} must be 0 (off) or between 50 and 100")));
+            }
+        }
+        if self.events.disk_full_days > 365 {
+            return Err(ConfigError::Invalid("events.disk_full_days must be at most 365".into()));
         }
         Ok(())
     }
@@ -1058,6 +1090,8 @@ mod tests {
         assert!(parse("[events]\ndisk_warn_pct = 80\ndisk_critical_pct = 90").validate().is_ok());
         assert!(parse("[events]\ndisk_warn_pct = 95\ndisk_critical_pct = 90").validate().is_err());
         assert!(parse("[events]\ndisk_critical_pct = 101").validate().is_err());
+        assert!(parse("[events]\ncpu_warn_pct = 0\nmemory_warn_pct = 95").validate().is_ok());
+        assert!(parse("[events]\ncpu_warn_pct = 20").validate().is_err());
         assert!(parse("[events]\nretain_days = 0").validate().is_err());
     }
 

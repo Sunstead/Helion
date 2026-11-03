@@ -1,5 +1,8 @@
 import {
+  Activity,
   Archive,
+  Boxes,
+  CircleHelp,
   Container,
   HardDrive,
   HeartPulse,
@@ -29,7 +32,17 @@ export const CATEGORY: Record<EventCategory, { label: string; icon: LucideIcon }
   uptime: { label: 'Uptime', icon: HeartPulse },
   update: { label: 'Update', icon: PackageCheck },
   peer: { label: 'Peers', icon: Network },
+  service: { label: 'Service', icon: Boxes },
+  host: { label: 'Host', icon: Activity },
 };
+
+/**
+ * A category's label and icon. A newer agent can send a category this app
+ * doesn't know yet; it gets a plain fallback rather than breaking the page.
+ */
+export function categoryOf(category: EventCategory): { label: string; icon: LucideIcon } {
+  return CATEGORY[category] ?? { label: String(category), icon: CircleHelp };
+}
 
 export function isResolution(e: Event): boolean {
   return e.problem?.state === 'resolved';

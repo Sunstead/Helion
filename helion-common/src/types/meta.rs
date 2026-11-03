@@ -119,6 +119,14 @@ pub struct Capabilities {
     /// from agents before 0.11.
     #[serde(default)]
     pub peers: bool,
+    /// `/v1/metrics/containers`: per-container history. Absent from agents
+    /// before 0.15.
+    #[serde(default)]
+    pub container_history: bool,
+    /// `/v1/services/expected`: services the agent expects to be running, so
+    /// one that disappears is reported. Absent from agents before 0.15.
+    #[serde(default)]
+    pub expected_services: bool,
 }
 
 impl Capabilities {
@@ -148,6 +156,8 @@ impl Capabilities {
             updates: false,
             update_actions: false,
             peers: false,
+            container_history: false,
+            expected_services: false,
         }
     }
 }
