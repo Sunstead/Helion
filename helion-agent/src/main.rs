@@ -312,8 +312,8 @@ async fn serve(cfg: Config, mode: config::AuthMode) -> Result<(), Box<dyn std::e
             (config::AuthMode::Oidc { .. }, Some(oidc)) => auth::Auth::oidc(oidc, cfg.auth.allow_query_token),
             _ => auth::Auth::anonymous(cfg.auth.allow_query_token),
         },
-        facts,
-        docker,
+        facts: facts.clone(),
+        docker: docker.clone(),
         history: history.clone(),
         host_rx,
         containers_rx,
@@ -345,10 +345,36 @@ async fn serve(cfg: Config, mode: config::AuthMode) -> Result<(), Box<dyn std::e
         "listening"
     );
 
-    // Under Compose, a deploy or `docker compose down` sends SIGTERM.
+    // Under Compose, a deploy or `docker compose down` sends SIGTERM. The
+    // other way out is a stale Docker socket (`docker::FailureStreak`): only
+    // a new container start mounts the new one, so the agent stops the same
+    // orderly way and exits non-zero for `restart: unless-stopped`.
     let store_for_stop = events.as_ref().map(|e| e.store.clone());
+    let events_for_stop = events.clone();
+    let docker_for_stop = docker.clone();
+    let node_for_stop = facts.node_name.clone();
+    let restart = Arc::new(std::sync::atomic::AtomicBool::new(false));
+    let restart_flag = restart.clone();
     tokio::spawn(async move {
-        shutdown_signal().await;
+        tokio::select! {
+            () = shutdown_signal() => {}
+            () = docker_for_stop.restart_requested() => {
+                restart_flag.store(true, std::sync::atomic::Ordering::SeqCst);
+                if let Some(events) = &events_for_stop {
+                    events.record(
+                        events::NewEvent::new(
+                            helion_common::types::EventCategory::Agent,
+                            "docker_reconnect_restart",
+                            helion_common::types::Severity::Warning,
+                            node_for_stop,
+                            "Restarting to reconnect to Docker"
+                        ).detail(
+                            "Docker calls kept failing while its socket was still there, which is what a restart of Docker leaves behind when the socket file itself is bind-mounted. The agent exits so its container restarts with the new socket."
+                        )
+                    );
+                }
+            }
+        }
         // Asked to stop, so the next start knows this wasn't a crash or a
         // power cut. Recorded first: if the drain below overruns Docker's
         // grace period, SIGKILL doesn't turn a deploy into a crash.
@@ -374,6 +400,9 @@ async fn serve(cfg: Config, mode: config::AuthMode) -> Result<(), Box<dyn std::e
     }
 
     tracing::info!("shutdown complete");
+    if restart.load(std::sync::atomic::Ordering::SeqCst) {
+        return Err("exiting so the container restarts with a fresh docker socket".into());
+    }
     Ok(())
 }
 

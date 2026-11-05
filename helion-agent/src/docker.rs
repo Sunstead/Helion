@@ -17,7 +17,13 @@ use bollard::{
     Docker,
 };
 use helion_common::types::{ ContainerAction, ContainerActionResult };
-use std::sync::{ Arc, RwLock };
+use std::{ sync::{ Arc, RwLock }, time::{ Duration, Instant } };
+
+/// How long Docker calls must keep failing, with the socket still there,
+/// before the agent restarts itself to get a fresh bind mount.
+pub const STALE_SOCKET_AFTER: Duration = Duration::from_secs(60);
+/// And in at least this many attempts, so one slow failure can't decide it.
+pub const STALE_SOCKET_MIN_FAILURES: u32 = 5;
 
 #[derive(Clone)]
 pub struct DockerHandle {
@@ -39,6 +45,9 @@ struct Inner {
     /// being lost until the next tick.
     containers_changed: tokio::sync::Notify,
     volumes_changed: tokio::sync::Notify,
+    /// Fired once by the container sampler when the socket looks stale (see
+    /// [`FailureStreak`]); `main` then shuts down and exits non-zero.
+    restart_needed: tokio::sync::Notify,
 }
 
 impl DockerHandle {
@@ -57,6 +66,7 @@ impl DockerHandle {
                 self_id: RwLock::new(None),
                 containers_changed: tokio::sync::Notify::new(),
                 volumes_changed: tokio::sync::Notify::new(),
+                restart_needed: tokio::sync::Notify::new(),
             }),
         }
     }
@@ -105,6 +115,27 @@ impl DockerHandle {
             }
         }
         fresh
+    }
+
+    /// Whether something is at the socket path. Inside a container whose
+    /// compose file bind-mounts the socket file itself, this stays true after
+    /// dockerd restarts: the mount still holds the old, deleted inode.
+    pub fn socket_exists(&self) -> bool {
+        std::path::Path::new(&self.inner.socket).exists()
+    }
+
+    pub fn socket(&self) -> &str {
+        &self.inner.socket
+    }
+
+    /// Asks `main` to stop the agent so its supervisor starts it again.
+    pub fn request_restart(&self) {
+        self.inner.restart_needed.notify_one();
+    }
+
+    /// Resolves once [`Self::request_restart`] has been called.
+    pub async fn restart_requested(&self) {
+        self.inner.restart_needed.notified().await;
     }
 
     pub fn mark_disconnected(&self) {
@@ -262,6 +293,45 @@ impl DockerHandle {
     }
 }
 
+/// Decides when failing Docker calls mean a stale socket rather than a Docker
+/// that is restarting.
+///
+/// Compose bind-mounts the single file `/var/run/docker.sock`. When dockerd
+/// restarts (an upgrade, with live-restore keeping containers up) it creates
+/// a new socket, but the container keeps the old, deleted inode at the same
+/// path, so every reconnect builds a client on a dead socket, forever. Only a
+/// new mount, which means a new container start, fixes that.
+///
+/// So: calls failing for [`STALE_SOCKET_AFTER`], at least
+/// [`STALE_SOCKET_MIN_FAILURES`] times, while the socket path exists. A
+/// missing socket is Docker being stopped, and resets the streak: the
+/// sampler keeps quietly retrying, as it always has. The window also bounds
+/// how often a Docker that is genuinely broken can restart the agent.
+#[derive(Debug, Default)]
+pub struct FailureStreak {
+    since: Option<Instant>,
+    failures: u32,
+}
+
+impl FailureStreak {
+    /// Records a failed call. True when it's time to give up.
+    pub fn fail(&mut self, now: Instant, socket_exists: bool) -> bool {
+        if !socket_exists {
+            self.reset();
+            return false;
+        }
+        let since = *self.since.get_or_insert(now);
+        self.failures = self.failures.saturating_add(1);
+        self.failures >= STALE_SOCKET_MIN_FAILURES &&
+            now.saturating_duration_since(since) >= STALE_SOCKET_AFTER
+    }
+
+    /// A call succeeded, or the socket is gone.
+    pub fn reset(&mut self) {
+        *self = Self::default();
+    }
+}
+
 fn connect(socket: &str) -> Option<Docker> {
     match
         Docker::connect_with_socket(
@@ -299,4 +369,62 @@ pub async fn resolve_self_id(docker: &Docker, hostname: &str) -> Option<String> 
         .into_iter()
         .filter_map(|c| c.id)
         .find(|id| id.starts_with(hostname))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn secs(n: u64) -> Duration {
+        Duration::from_secs(n)
+    }
+
+    #[test]
+    fn gives_up_after_a_minute_of_failures_with_the_socket_present() {
+        let t0 = Instant::now();
+        let mut streak = FailureStreak::default();
+        for i in 0..30 {
+            assert!(!streak.fail(t0 + secs(i * 2), true), "tick {i}");
+        }
+        assert!(streak.fail(t0 + secs(60), true));
+    }
+
+    #[test]
+    fn a_success_starts_the_window_again() {
+        let t0 = Instant::now();
+        let mut streak = FailureStreak::default();
+        for i in 0..25 {
+            streak.fail(t0 + secs(i * 2), true);
+        }
+        streak.reset();
+        assert!(!streak.fail(t0 + secs(60), true));
+        for i in 31..60 {
+            assert!(!streak.fail(t0 + secs(i * 2), true), "tick {i}");
+        }
+        assert!(streak.fail(t0 + secs(120), true));
+    }
+
+    #[test]
+    fn a_missing_socket_is_docker_stopped_and_never_gives_up() {
+        let t0 = Instant::now();
+        let mut streak = FailureStreak::default();
+        for i in 0..100 {
+            assert!(!streak.fail(t0 + secs(i * 2), false));
+        }
+        // Coming back counts from then, not from the first failure.
+        for i in 100..130 {
+            assert!(!streak.fail(t0 + secs(i * 2), true), "tick {i}");
+        }
+        assert!(streak.fail(t0 + secs(260), true));
+    }
+
+    #[test]
+    fn a_few_slow_failures_are_not_enough() {
+        let t0 = Instant::now();
+        let mut streak = FailureStreak::default();
+        for i in 0..STALE_SOCKET_MIN_FAILURES - 1 {
+            assert!(!streak.fail(t0 + secs(u64::from(i) * 120), true));
+        }
+        assert!(streak.fail(t0 + secs(600), true));
+    }
 }
