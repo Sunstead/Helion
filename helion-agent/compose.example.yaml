@@ -57,6 +57,12 @@ services:
       # to the inode, not the protocol — anyone who can connect() to this socket
       # has the full Docker API, which is root-equivalent on the host. The real
       # controls are `allow_actions` in the config and network isolation.
+      #
+      # This mounts the socket file itself, so when dockerd restarts (an
+      # upgrade, with live-restore keeping this container up) the container
+      # keeps the old, deleted socket. After a minute of failed calls with the
+      # socket still there, the agent exits non-zero so `restart:` brings it
+      # back with the new one. Keep a restart policy.
       - /var/run/docker.sock:/var/run/docker.sock
 
       # The host's filesystems. The bind is recursive and `rslave` follows

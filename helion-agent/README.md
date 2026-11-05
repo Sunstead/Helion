@@ -58,6 +58,14 @@ inode, not the protocol. Anyone who can `connect()` to that socket has the full
 Docker API, which is root-equivalent on the host. The real controls are
 `allow_actions = false` and network isolation.
 
+**Keep a restart policy.** Compose bind-mounts the socket *file*, so when
+dockerd restarts underneath a running agent (a Docker upgrade with
+`live-restore` on) the container still holds the old, deleted socket and no
+reconnect can reach the new one. After Docker calls have failed for a minute
+with the socket path still present, the agent logs why, records an event and
+exits non-zero, and `restart: unless-stopped` starts it with a fresh mount.
+A missing socket means Docker is stopped, and the agent just waits for it.
+
 Filesystems are listed explicitly in `[[host.disks]]`, because a container's
 `/proc/mounts` is full of overlayfs and bind mounts. `path` is what the agent
 sees, `label` is what the UI shows.

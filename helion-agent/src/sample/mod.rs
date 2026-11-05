@@ -106,6 +106,8 @@ pub fn spawn_containers(
         let mut ticker = tokio::time::interval(period);
         ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
         let mut failing = false;
+        let mut streak = crate::docker::FailureStreak::default();
+        let mut restart_requested = false;
 
         loop {
             // Either the interval elapses, or a Docker event says something
@@ -117,6 +119,8 @@ pub fn spawn_containers(
             }
 
             let Some(client) = docker.try_reconnect() else {
+                // No socket: Docker is stopped. Wait for it, however long.
+                streak.reset();
                 if !failing {
                     tracing::warn!("docker is unreachable; containers are the last known list");
                     failing = true;
@@ -134,6 +138,7 @@ pub fn spawn_containers(
                         tracing::info!("docker container sampling recovered");
                         failing = false;
                     }
+                    streak.reset();
                     if let Some(h) = &history {
                         if let Some(rows) = minute.add(snapshot.sampled_at, &snapshot.containers) {
                             h.push_containers(rows);
@@ -155,6 +160,22 @@ pub fn spawn_containers(
                         }
                     }
                     docker.mark_disconnected();
+                    if
+                        !restart_requested &&
+                        streak.fail(std::time::Instant::now(), docker.socket_exists())
+                    {
+                        tracing::error!(
+                            error = %e,
+                            socket = %docker.socket(),
+                            "docker calls have failed for {}s while the socket is still there; \
+                             it is most likely a stale bind mount (dockerd restarted and made a \
+                             new socket, the container still holds the old one). Restarting \
+                             the agent so its supervisor mounts the new one",
+                            crate::docker::STALE_SOCKET_AFTER.as_secs()
+                        );
+                        restart_requested = true;
+                        docker.request_restart();
+                    }
                 }
             }
         }
